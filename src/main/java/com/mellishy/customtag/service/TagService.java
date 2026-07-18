@@ -72,6 +72,12 @@ public class TagService implements Listener {
             msg(player, cfg.msg("reservation-expired"));
             return;
         }
+        // Defense-in-depth: ChatInputListener and BookEditListener already reject an oversized tag
+        // before ever getting here, but TagService is the single real trust boundary for the whole
+        // plugin (every path that can create a tag funnels through TagSubmitEvent into this method) -
+        // it must never assume a caller upstream already validated this, in case a future creation
+        // method or an external plugin ever calls callEvent(new TagSubmitEvent(...)) directly.
+        if (!isWithinLengthLimit(player, cfg, rawText)) return;
 
         TagEntry entry = new TagEntry(UUID.randomUUID().toString(), player.getUniqueId(), rawText, TagStatus.PENDING, System.currentTimeMillis());
         data.getTags().add(entry);
@@ -92,12 +98,27 @@ public class TagService implements Listener {
             msg(player, cfg.msg("request-pending-block"));
             return;
         }
+        // see the matching comment in submitNew() - same defense-in-depth reasoning applies to edits.
+        if (!isWithinLengthLimit(player, cfg, rawText)) return;
 
         tag.setRawText(rawText);
         tag.setStatus(TagStatus.PENDING);
         tag.setRejectReason(null);
         plugin.data().save(data);
         msg(player, cfg.msg("edit-submitted"));
+    }
+
+    /** Shared length check backing the defense-in-depth guards in {@link #submitNew} and {@link #submitEdit}. */
+    private boolean isWithinLengthLimit(Player player, ConfigManager cfg, String rawText) {
+        int plainLength = ColorUtil.stripToPlain(rawText).length();
+        int maxLength = cfg.maxTagLength();
+        if (plainLength > maxLength) {
+            msg(player, cfg.msg("tag-too-long")
+                    .replace("{length}", String.valueOf(plainLength))
+                    .replace("{max}", String.valueOf(maxLength)));
+            return false;
+        }
+        return true;
     }
 
     // ---------- token reservation (see class javadoc) ----------
@@ -324,6 +345,10 @@ public class TagService implements Listener {
         tag.setStatus(TagStatus.REJECTED);
         tag.setRejectReason(reason);
         syncRandomStateAfterRemoval(data, tagId);
+        // Caps how many REJECTED tags stay in this player's history (tokens.max-rejected-history) -
+        // see PlayerData#pruneRejectedHistory for the full reasoning. Pure data-only logic lives
+        // there (unit-tested) rather than here, so TagService just wires the config value in.
+        data.pruneRejectedHistory(plugin.config().maxRejectedHistory());
         plugin.data().save(data);
 
         String text = plugin.config().rawMsg("request-rejected-dm").replace("{reason}", reason);

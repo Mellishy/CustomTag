@@ -107,7 +107,10 @@ public class TagListGUI {
         if (!canCreate) {
             if (data.hasPending()) createLore.add("&cYou already have a pending request.");
             else if (data.getTokens() <= 0) createLore.add("&cYou have no tokens left.");
-            else if (data.getTags().size() >= cfg.maxTagsPerPlayer()) createLore.add("&cMax tags reached.");
+            // BUGFIX: same fix as MainMenuGUI#open - must mirror TagService#canOpenCreateMethod's
+            // activeTagCount() check, not getTags().size() (which also counts REJECTED history and
+            // could show this reason for the wrong cause, or hide the real one - e.g. a cooldown).
+            else if (data.activeTagCount() >= cfg.maxTagsPerPlayer()) createLore.add("&cMax tags reached.");
             else if (plugin.cooldown().isOnCooldown(data))
                 createLore.add("&cCooldown: &f" + plugin.cooldown().formatDuration(plugin.cooldown().remainingSeconds(data)));
         } else if (data.isReservationActive()) {

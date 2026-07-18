@@ -3,7 +3,9 @@ package com.mellishy.customtag.config;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Thin wrapper around config.yml so nothing in the codebase is hardcoded.
@@ -36,6 +38,16 @@ public class ConfigManager {
 
     public int maxTagsPerPlayer() {
         return cfg.getInt("tokens.max-tags-per-player", 10);
+    }
+
+    /** Max VISIBLE (plain, colors stripped) length allowed for a submitted tag - see tokens.max-tag-length. */
+    public int maxTagLength() {
+        return Math.max(1, cfg.getInt("tokens.max-tag-length", 32));
+    }
+
+    /** How many REJECTED tags are kept per player before the oldest are pruned - 0 = unlimited. See tokens.max-rejected-history. */
+    public int maxRejectedHistory() {
+        return Math.max(0, cfg.getInt("tokens.max-rejected-history", 5));
     }
 
     public int cancelCooldownSeconds() {
@@ -183,7 +195,7 @@ public class ConfigManager {
      * missing key logs a clear one-time warning per menu/slot pair (so a busy console isn't spammed
      * every time the GUI opens) and still falls back to 0 so the menu never hard-crashes.
      */
-    private final java.util.Set<String> warnedMissingSlots = new java.util.HashSet<>();
+    private final Set<String> warnedMissingSlots = new HashSet<>();
 
     public int guiSlot(String menu, String slot) {
         String path = "gui." + menu + "." + slot;

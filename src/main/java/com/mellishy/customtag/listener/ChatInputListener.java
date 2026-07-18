@@ -2,6 +2,8 @@ package com.mellishy.customtag.listener;
 
 import com.mellishy.customtag.MellishyCustomTag;
 import com.mellishy.customtag.config.ConfigManager;
+import com.mellishy.customtag.event.AdminRejectEvent;
+import com.mellishy.customtag.event.TagSubmitEvent;
 import com.mellishy.customtag.util.ColorUtil;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
@@ -93,6 +95,24 @@ public class ChatInputListener implements Listener {
             case CREATE_TAG, EDIT_TAG -> {
                 String editingId = pending.type() == InputType.EDIT_TAG ? pending.context() : null;
                 String reservationId = pending.type() == InputType.CREATE_TAG ? pending.context() : null;
+
+                // BUGFIX: there was previously no length limit at all on player-submitted tag text -
+                // an oversized tag would sail straight through preview/submission and, once approved,
+                // get rendered into EVERY other player's chat by ChatTagListener on every message.
+                // Checked against the PLAIN (color/format codes stripped) length so decorative codes
+                // like <gradient:...> or &c don't unfairly eat into the player's visible budget.
+                // Re-typing after this message keeps the player in chat-input mode (see below), so
+                // they can simply try again with shorter text - no token is spent or lost here.
+                int plainLength = ColorUtil.stripToPlain(message).length();
+                int maxLength = cfg.maxTagLength();
+                if (plainLength > maxLength) {
+                    awaiting.put(player.getUniqueId(), pending);
+                    player.sendMessage(ColorUtil.parse(cfg.msg("tag-too-long")
+                            .replace("{length}", String.valueOf(plainLength))
+                            .replace("{max}", String.valueOf(maxLength))));
+                    return;
+                }
+
                 if (cfg.previewEnabled()) {
                     showPreview(player, pending.type(), editingId, message, reservationId);
                     // stay in chat-input mode: the player can keep retyping to tweak their color/text
@@ -104,7 +124,7 @@ public class ChatInputListener implements Listener {
                 }
             }
             case ADMIN_REASON -> plugin.getServer().getPluginManager()
-                    .callEvent(new com.mellishy.customtag.event.AdminRejectEvent(player, pending.context(), message));
+                    .callEvent(new AdminRejectEvent(player, pending.context(), message));
         }
     }
 
@@ -195,6 +215,6 @@ public class ChatInputListener implements Listener {
 
     private void submitDirectly(Player player, String editingTagId, String rawText, String reservationId) {
         plugin.getServer().getPluginManager()
-                .callEvent(new com.mellishy.customtag.event.TagSubmitEvent(player, editingTagId, rawText, reservationId));
+                .callEvent(new TagSubmitEvent(player, editingTagId, rawText, reservationId));
     }
 }

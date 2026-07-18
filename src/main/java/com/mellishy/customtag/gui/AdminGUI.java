@@ -7,6 +7,7 @@ import com.mellishy.customtag.data.PlayerData;
 import com.mellishy.customtag.data.TagEntry;
 import com.mellishy.customtag.util.ColorUtil;
 import com.mellishy.customtag.util.ItemBuilder;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -61,8 +62,25 @@ public class AdminGUI {
 
     private final MellishyCustomTag plugin;
 
+    // Cached across calls to open() instead of allocating a new SimpleDateFormat every single time
+    // the admin queue is opened/paginated - this menu can realistically be reopened dozens of times
+    // a minute by a busy moderator. Safe to cache as a plain field (not thread-local/synchronized):
+    // GUI code only ever runs on the main thread, so there's never concurrent access to it. Keyed by
+    // pattern string so a live /customtag reload that changes messages.admin-date-format is picked
+    // up immediately instead of keeping a stale formatter.
+    private String cachedDatePattern;
+    private SimpleDateFormat cachedDateFormat;
+
     public AdminGUI(MellishyCustomTag plugin) {
         this.plugin = plugin;
+    }
+
+    private SimpleDateFormat dateFormat(String pattern) {
+        if (cachedDateFormat == null || !pattern.equals(cachedDatePattern)) {
+            cachedDatePattern = pattern;
+            cachedDateFormat = new SimpleDateFormat(pattern);
+        }
+        return cachedDateFormat;
     }
 
     public void open(Player admin) {
@@ -89,7 +107,13 @@ public class AdminGUI {
 
         // Page/total-pending info now lives in the GUI title itself (computed up front, before the
         // inventory is created) instead of a separate clickable-looking item in the footer.
-        String title = cfg.guiTitle("admin-list") + " &7[" + (currentPage + 1) + "/" + totalPages + "]";
+        // Defensively capped: an admin free-typing a very long gui.admin-list.title in config.yml
+        // (plus this page suffix) could otherwise produce a title the client silently truncates or
+        // renders oddly - trimming the CONFIGURED part here keeps the "[x/y]" page indicator, which
+        // is the one part that actually needs to stay visible, always intact and readable.
+        String rawTitle = cfg.guiTitle("admin-list");
+        if (rawTitle.length() > 48) rawTitle = rawTitle.substring(0, 48);
+        String title = rawTitle + " &7[" + (currentPage + 1) + "/" + totalPages + "]";
 
         MellishyInventoryHolder holder = new MellishyInventoryHolder(GuiType.ADMIN_LIST);
         Inventory inv = plugin.getServer().createInventory(holder, size, ColorUtil.parse(title));
@@ -101,9 +125,9 @@ public class AdminGUI {
         GuiFrame.applyTheme(inv, size, theme);
 
         int backSlot = cfg.guiSlot("admin-list", "back-slot");
-        inv.setItem(backSlot, new ItemBuilder(org.bukkit.Material.BARRIER).name("&c&lClose").build());
+        inv.setItem(backSlot, new ItemBuilder(Material.BARRIER).name("&c&lClose").build());
 
-        SimpleDateFormat dateFormat = new SimpleDateFormat(cfg.adminDateFormat());
+        SimpleDateFormat dateFormat = dateFormat(cfg.adminDateFormat());
 
         int fromIndex = currentPage * perPage;
         int toIndex = Math.min(fromIndex + perPage, totalPending);
@@ -178,11 +202,11 @@ public class AdminGUI {
         // nav button; a disabled button (grey dye, no glow, plain-grey name) is also genuinely inert
         // now - see GuiListener#handleAdminList, which checks holder.getPage()/getTotalPages()
         // before doing anything instead of trusting the icon alone.
-        inv.setItem(prevSlot, new ItemBuilder(hasPrev ? org.bukkit.Material.ARROW : org.bukkit.Material.GRAY_DYE)
+        inv.setItem(prevSlot, new ItemBuilder(hasPrev ? Material.ARROW : Material.GRAY_DYE)
                 .name(hasPrev ? "&e&l\u25C0 Previous Page" : "&7\u25C0 Previous Page")
                 .lore(hasPrev ? List.of() : List.of("&8Already on the first page"))
                 .build());
-        inv.setItem(nextSlot, new ItemBuilder(hasNext ? org.bukkit.Material.ARROW : org.bukkit.Material.GRAY_DYE)
+        inv.setItem(nextSlot, new ItemBuilder(hasNext ? Material.ARROW : Material.GRAY_DYE)
                 .name(hasNext ? "&e&lNext Page \u25B6" : "&7Next Page \u25B6")
                 .lore(hasNext ? List.of("&7Total pending: &f" + totalPending) : List.of("&8Already on the last page"))
                 .build());

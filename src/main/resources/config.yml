@@ -7,10 +7,19 @@
 tokens:
   # tokens a brand-new player starts with
   starting-amount: 3
-  # max amount of ACTIVE tags (approved + pending) a player may hold at once. Rejected tags stay
-  # visible in their tag list as history but do NOT count against this limit, so old rejections
-  # can never permanently block someone from creating a new tag.
+  # max amount of tags (approved + pending + rejected kept in history) a player may own at once
   max-tags-per-player: 10
+  # Maximum VISIBLE (color/format codes stripped) length of a submitted tag's text. Enforced on
+  # both creation methods (chat and book) before a preview is even shown, so a player can never
+  # spend a token on - or an admin ever has to review - a wall-of-text "tag" that would spam every
+  # other player's chat once approved and rendered by ChatTagListener.
+  max-tag-length: 32
+  # How many REJECTED tags are kept as visible history per player before the OLDEST ones are
+  # silently pruned on the next rejection. Rejected tags never count against max-tags-per-player
+  # (see PlayerData#activeTagCount) precisely so they can't lock a player out - but with no cap at
+  # all they'd otherwise accumulate forever on a long-running server, growing every player's saved
+  # row without bound. 0 disables pruning entirely (unlimited history, the old behaviour).
+  max-rejected-history: 5
 
 cooldown:
   # seconds a player must wait after CANCELLING a pending request before requesting again
@@ -221,6 +230,8 @@ messages:
   no-tokens: "&cYou don't have enough tokens to create a new tag."
   max-tags-reached: "&cYou reached the maximum number of tags ({max})."
   request-submitted: "&aYour tag request has been submitted and is now pending admin review."
+  # shown when the submitted text (color codes stripped) is longer than tokens.max-tag-length
+  tag-too-long: "&cYour tag is too long ({length}/{max} characters). Please shorten it and try again."
   request-cancelled: "&eYour pending request was cancelled and your token was refunded."
   request-approved-dm: "&aYour tag request was &2APPROVED&a! You can now select it."
   request-rejected-dm: "&cYour tag request was &4REJECTED&c. Reason: &f{reason}"

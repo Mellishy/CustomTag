@@ -136,6 +136,20 @@ public class BookEditListener implements Listener {
             return; // wrote nothing at all - nothing to submit
         }
 
+        // BUGFIX: same tokens.max-tag-length check now enforced on the CHAT method (see
+        // ChatInputListener#handle) - previously only that path had any length limit at all, so the
+        // book method was a way to bypass it entirely (a book page can hold far more characters than
+        // is reasonable for a chat-rendered tag). Checked against the plain, stripped length for the
+        // same reason as the chat path.
+        int plainLength = ColorUtil.stripToPlain(content).length();
+        int maxLength = cfg.maxTagLength();
+        if (plainLength > maxLength) {
+            player.sendMessage(ColorUtil.parse(cfg.msg("tag-too-long")
+                    .replace("{length}", String.valueOf(plainLength))
+                    .replace("{max}", String.valueOf(maxLength))));
+            return;
+        }
+
         // Reject a submission that's identical to what they were shown when the book was handed out
         // (the default template for a new tag, or their existing text when re-editing) - previously
         // clicking Done/Sign without writing anything real still forwarded the placeholder/old text

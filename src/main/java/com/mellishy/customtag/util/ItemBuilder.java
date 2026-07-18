@@ -1,10 +1,12 @@
 package com.mellishy.customtag.util;
 
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
-import org.bukkit.NamespacedKey;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -105,8 +107,8 @@ public class ItemBuilder {
 
     public ItemBuilder glow(boolean glow) {
         if (glow) {
-            meta.addEnchant(org.bukkit.enchantments.Enchantment.LURE, 1, true);
-            meta.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);
+            meta.addEnchant(Enchantment.LURE, 1, true);
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
         }
         return this;
     }

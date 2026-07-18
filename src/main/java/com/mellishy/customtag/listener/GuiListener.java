@@ -3,7 +3,15 @@ package com.mellishy.customtag.listener;
 import com.mellishy.customtag.MellishyCustomTag;
 import com.mellishy.customtag.config.ConfigManager;
 import com.mellishy.customtag.data.PlayerData;
-import com.mellishy.customtag.gui.*;
+import com.mellishy.customtag.data.TagStatus;
+import com.mellishy.customtag.gui.AdminGUI;
+import com.mellishy.customtag.gui.AdminPlayerTagsGUI;
+import com.mellishy.customtag.gui.AdminReasonGUI;
+import com.mellishy.customtag.gui.CreateMethodGUI;
+import com.mellishy.customtag.gui.MainMenuGUI;
+import com.mellishy.customtag.gui.MellishyInventoryHolder;
+import com.mellishy.customtag.gui.RandomSettingsGUI;
+import com.mellishy.customtag.gui.TagListGUI;
 import com.mellishy.customtag.util.ColorUtil;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -129,8 +137,8 @@ public class GuiListener implements Listener {
 
         switch (click) {
             case LEFT -> {
-                if (opt.get().getStatus() == com.mellishy.customtag.data.TagStatus.PENDING) {
-                    player.sendMessage(com.mellishy.customtag.util.ColorUtil.parse(cfg.msg("request-pending-block")));
+                if (opt.get().getStatus() == TagStatus.PENDING) {
+                    player.sendMessage(ColorUtil.parse(cfg.msg("request-pending-block")));
                     return;
                 }
                 player.closeInventory();
@@ -190,7 +198,7 @@ public class GuiListener implements Listener {
                 player.closeInventory();
                 plugin.chatInput().await(player, ChatInputListener.InputType.EDIT_TAG, editingId);
             }
-            player.sendMessage(com.mellishy.customtag.util.ColorUtil.parse(cfg.msg("chat-input-prompt")));
+            player.sendMessage(ColorUtil.parse(cfg.msg("chat-input-prompt")));
         }
     }
 
@@ -313,7 +321,7 @@ public class GuiListener implements Listener {
         if (action.equals("custom")) {
             player.closeInventory();
             plugin.chatInput().await(player, ChatInputListener.InputType.ADMIN_REASON, target);
-            player.sendMessage(com.mellishy.customtag.util.ColorUtil.parse(plugin.config().msg("admin-reject-prompt")));
+            player.sendMessage(ColorUtil.parse(plugin.config().msg("admin-reject-prompt")));
         } else if (action.startsWith("preset:")) {
             int index = Integer.parseInt(action.substring("preset:".length()));
             var presets = plugin.config().rejectPresets();

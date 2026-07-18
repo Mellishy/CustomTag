@@ -5,6 +5,7 @@ import com.mellishy.customtag.config.ConfigManager;
 import com.mellishy.customtag.config.GuiStateTheme;
 import com.mellishy.customtag.data.PlayerData;
 import com.mellishy.customtag.data.TagStatus;
+import com.mellishy.customtag.util.ColorUtil;
 import com.mellishy.customtag.util.ItemBuilder;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -37,7 +38,7 @@ public class MainMenuGUI {
 
         int size = cfg.guiSize("main-menu");
         MellishyInventoryHolder holder = new MellishyInventoryHolder(GuiType.MAIN_MENU);
-        Inventory inv = plugin.getServer().createInventory(holder, size, com.mellishy.customtag.util.ColorUtil.parse(cfg.guiTitle("main-menu")));
+        Inventory inv = plugin.getServer().createInventory(holder, size, ColorUtil.parse(cfg.guiTitle("main-menu")));
         holder.setInventory(inv);
 
         int headSlot = cfg.guiSlot("main-menu", "head-slot");
@@ -113,7 +114,15 @@ public class MainMenuGUI {
             List<String> reasons = new ArrayList<>();
             if (data.hasPending()) reasons.add("&cYou already have a pending request.");
             else if (data.getTokens() <= 0) reasons.add("&cYou have no tokens left.");
-            else if (data.getTags().size() >= cfg.maxTagsPerPlayer()) reasons.add("&cYou reached the max amount of tags.");
+            // BUGFIX: must mirror TagService#canOpenCreateMethod exactly - that check (the actual
+            // source of truth for whether "Create" is blocked) uses activeTagCount() (PENDING +
+            // APPROVED only), never getTags().size(). Using .size() here counted REJECTED history
+            // tags too, so a player who simply accumulated several rejected attempts over time could
+            // be shown "You reached the max amount of tags" as the reason even when the real reason
+            // was something else entirely (e.g. a cooldown) - or, if none of the earlier branches
+            // matched by coincidence, no reason at all. See PlayerData#activeTagCount for why this
+            // distinction exists.
+            else if (data.activeTagCount() >= cfg.maxTagsPerPlayer()) reasons.add("&cYou reached the max amount of tags.");
             else if (plugin.cooldown().isOnCooldown(data))
                 reasons.add("&cCooldown: &f" + plugin.cooldown().formatDuration(plugin.cooldown().remainingSeconds(data)));
             createItem = ItemBuilder.icon(cfg.iconBase64("create-button-locked"), Material.REDSTONE_BLOCK)

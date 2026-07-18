@@ -1,6 +1,7 @@
 package com.mellishy.customtag.data;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -216,5 +217,31 @@ public class PlayerData {
         List<TagEntry> filtered = approved.stream().filter(t -> randomTagPool.contains(t.getId())).toList();
         // the whole subset became invalid (all deleted/rejected since being picked) - fail safe to "every approved tag"
         return filtered.isEmpty() ? approved : filtered;
+    }
+
+    /**
+     * Caps how many REJECTED tags stay in {@link #getTags()} (see tokens.max-rejected-history in
+     * config.yml), called by {@link com.mellishy.customtag.service.TagService#reject} right after a
+     * tag is rejected. REJECTED tags deliberately never count against max-tags-per-player (see
+     * {@link #activeTagCount()}) specifically so a player can never be locked out by their own
+     * rejection history - but with no cap at all, that history would grow without bound for the
+     * lifetime of the account (every submit-and-get-rejected cycle adds one more permanent row to
+     * this player's saved data, forever). Only the OLDEST rejected entries beyond {@code cap} are
+     * dropped (oldest by {@link TagEntry#getUpdatedAt()}, i.e. the moment each was rejected), so the
+     * most recent rejections - the ones actually still relevant to the player - are always the ones
+     * kept visible in their tag list.
+     *
+     * @param cap maximum rejected entries to keep; {@code <= 0} disables pruning entirely (unbounded history).
+     */
+    public void pruneRejectedHistory(int cap) {
+        if (cap <= 0) return;
+
+        List<TagEntry> rejected = tags.stream()
+                .filter(t -> t.getStatus() == TagStatus.REJECTED)
+                .sorted(Comparator.comparingLong(TagEntry::getUpdatedAt))
+                .toList();
+        int excess = rejected.size() - cap;
+        if (excess <= 0) return;
+        tags.removeAll(rejected.subList(0, excess));
     }
 }
