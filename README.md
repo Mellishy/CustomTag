@@ -1,5 +1,5 @@
 # mellishy custom tag 
-a simple, token-based custom tag plugin for paper 1.21.1.
+a simple, token-based custom tag plugin for paper 1.21.11.
 
 ### what is this
 a custom tag request system where players spend tokens to get their unique tags. admins approve or deny them through a clean gui, keeping everything organized and easy to manage.
