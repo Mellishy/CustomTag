@@ -1,0 +1,23 @@
+name: CustomTag
+version: '3.0.0'
+main: com.mellishy.customtag.MellishyCustomTag
+api-version: '1.21'
+author: Mellishy
+website: https://github.com/Mellishy/MellishyCustomTag
+description: Professional custom player tag system - token economy, in-game GUI/book tag creation, live chat tag rendering and a full admin approval workflow.
+softdepend: [PlaceholderAPI]
+
+commands:
+  customtag:
+    aliases: [ct]
+    description: Open the Mellishy custom tag menu.
+    usage: /customtag [admin|give|take|resetcooldown|reload|managetags]
+    permission: mellishy.use
+
+permissions:
+  mellishy.use:
+    description: Allows opening the custom tag menu and requesting tags.
+    default: true
+  mellishy.admin:
+    description: Allows approving/rejecting requests and managing tokens/cooldowns.
+    default: op

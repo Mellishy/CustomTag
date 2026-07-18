@@ -1,0 +1,323 @@
+# =====================================================
+#  CustomTag - Configuration
+#  Colors support: legacy (&c), hex (&#RRGGBB) and
+#  full MiniMessage (<gradient:#ff0000:#0000ff>text</gradient>)
+# =====================================================
+
+tokens:
+  # tokens a brand-new player starts with
+  starting-amount: 3
+  # max amount of ACTIVE tags (approved + pending) a player may hold at once. Rejected tags stay
+  # visible in their tag list as history but do NOT count against this limit, so old rejections
+  # can never permanently block someone from creating a new tag.
+  max-tags-per-player: 10
+
+cooldown:
+  # seconds a player must wait after CANCELLING a pending request before requesting again
+  cancel-cooldown-seconds: 300
+
+storage:
+  # folder name inside the plugin's data folder where per-player yml files are kept (only used
+  # by the "yaml" backend below, and as the automatic safety fallback for mysql/mongodb)
+  folder: "playerdata"
+  # which backend actually persists player data: "yaml" (default, zero setup) | "mysql" | "mongodb"
+  # If mysql/mongodb is chosen but the plugin can't connect at startup for ANY reason (wrong
+  # host/credentials, service down, driver missing, ...) it automatically and safely falls back to
+  # "yaml" instead of crashing - check your console log for a warning if that happens.
+  type: "yaml"
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "customtag"
+    username: "root"
+    password: ""
+    use-ssl: false
+    # every table this plugin creates/uses is prefixed with this, so it can safely share a database
+    # with other plugins
+    table-prefix: "ct_"
+    # HikariCP maximum pool size. This plugin does short, single-row writes (not heavy analytical
+    # queries), so the default is deliberately modest - raise it on a very large server (5000+
+    # concurrent players) only if you actually see connections being waited on in your logs.
+    pool-size: 10
+  mongodb:
+    connection-string: "mongodb://localhost:27017"
+    database: "customtag"
+    collection: "players"
+  # OFF by default - every player who has ever connected stays cached in memory for the whole
+  # session, which is simplest and fine for the vast majority of servers. Turn this on only if
+  # you're running a server with a very large CUMULATIVE playerbase over a long uptime (tens of
+  # thousands of unique accounts) and want offline players' data unloaded from memory after a
+  # while instead of accumulating forever. Nothing is ever lost either way - an evicted player's
+  # data is transparently reloaded from storage right before they reconnect.
+  cache-eviction:
+    enabled: false
+    # how long (seconds) after a player disconnects before their data is dropped from memory -
+    # a quick reconnect within this window just keeps them cached, no reload needed
+    delay-seconds: 300
+
+placeholders:
+  enabled: true
+  # placeholder returned by %customtag_tag% when the player has no active tag
+  empty-value: ""
+
+# =====================================================
+#  Random tag rotation - see the "Random Tag Settings"
+#  button in the tag-list menu once a player qualifies.
+# =====================================================
+random-tag:
+  # minimum APPROVED tags a player must own before the feature can be turned on at all
+  min-tags: 2
+  # from this many approved tags onward, deliberately picking a subset in Random Tag Settings
+  # actually matters (below this, every approved tag is simply used automatically)
+  subset-unlock-tags: 4
+
+# =====================================================
+#  Admin moderation extras
+# =====================================================
+admin:
+  # Silent moderation in the admin queue (never sends the player a chat message) is now two
+  # separate, explicit actions instead of one toggle:
+  #   SHIFT + Right-click -> silently remove AND refund the token (a quiet courtesy removal)
+  #   Drop (Q)            -> silently remove, token is NOT refunded (a real, silent penalty)
+  # Both are always shown in the request's lore so an admin sees exactly what each click does.
+
+# =====================================================
+#  Live chat preview before a tag is actually submitted
+#  (chat creation method only - see ChatInputListener)
+# =====================================================
+preview:
+  enabled: true
+  # how long (seconds) a shown-but-unconfirmed preview stays clickable before it silently expires
+  # and the player has to type their tag again
+  expiry-seconds: 120
+
+# =====================================================
+#  Chat rendering - this is what actually puts the tag
+#  next to a player's name in chat.
+# =====================================================
+chat:
+  # true  -> the plugin renders every chat message itself, tag included. Nothing else to set up.
+  # false -> the plugin never touches chat at all. Use %customtag_tag% in your own
+  #          chat/tab/nametag plugin instead (PlaceholderAPI required for that).
+  auto-apply-tag: true
+  # only used when auto-apply-tag is true. Placeholders: {tag} {player} {message}
+  # Default layout is "PlayerName [tag]: message" - swap the order of {player} and {tag} here
+  # if you'd rather have the tag come first. Colors/MiniMessage can safely wrap across the
+  # placeholders (e.g. "<white>{player}</white>") - they are resolved as real components, not
+  # pasted as raw text, so tags can never "leak" into chat as literal <white> text.
+  format: "<white>{player}</white> {tag}&7: &f{message}"
+
+# =====================================================
+#  GUI layout & customizable icons
+# =====================================================
+gui:
+  # Global theme - the stained-glass colors used to frame every menu. Nothing here is hardcoded
+  # in the plugin: use any *_STAINED_GLASS_PANE (or any Material at all) from Minecraft's item
+  # list and the whole plugin re-themes itself. Invalid names always fall back safely.
+  theme:
+    # solid frame along the very top/bottom rows of every menu
+    border-material: "BLACK_STAINED_GLASS_PANE"
+    # lighter accent used down the left/right columns
+    side-material: "GRAY_STAINED_GLASS_PANE"
+    # neutral filler used to pad out empty interior slots so a menu never looks "half built"
+    filler-material: "LIGHT_GRAY_STAINED_GLASS_PANE"
+    # second filler color, alternated with filler-material in a checkerboard pattern instead of one
+    # flat color across the whole interior (this is what made big menus look plain/unfinished)
+    filler-material-alt: "WHITE_STAINED_GLASS_PANE"
+  main-menu:
+    title: "&8&lCustom &7» &fTags"
+    size: 45
+    # top row: the create button, one empty gap, then the custom-tag-list button
+    create-slot: 4
+    list-slot: 6
+    # player head, two rows above the exit button
+    head-slot: 22
+    # clean, single exit button on the bottom row
+    exit-slot: 40
+  method-menu:
+    title: "&8&lTags &7» &fChoose a method"
+    size: 27
+    book-slot: 11
+    chat-slot: 15
+    back-slot: 22
+  tag-list:
+    title: "&8&lMy Custom Tags"
+    size: 54
+    create-slot: 49
+    back-slot: 45
+    # opens Random Tag Settings - see the random-tag.* section above for the unlock thresholds
+    random-slot: 53
+  admin-list:
+    title: "&8&lAdmin &7» &fPending Requests"
+    size: 54
+    back-slot: 49
+    # pagination footer (see AdminGUI) - shown regardless of how many pending requests exist so the
+    # admin always sees an accurate page/total count, even when there's only one page
+    prev-page-slot: 48
+    next-page-slot: 50
+    # NOTE: there used to be a third "page-info-slot" item here showing "Page X/Y" - that readout
+    # now lives directly in this menu's title bar instead (see AdminGUI#open), so that slot is just
+    # part of the themed footer/border again.
+    # NOTE: the glass color of this menu is no longer set here - it now automatically uses
+    # guiApproved.yml (green) when the queue is empty and guiPending.yml (orange) when there's at
+    # least one pending request, exactly matching the same theme files the player menus use. Edit
+    # those two files to re-skin this menu.
+  # Cleanup view for one specific player's tags of ANY status (not just pending) - opened via
+  # /customtag managetags <player>. This is where deleteSilent (see TagService) is actually used:
+  # quietly removing an already-approved or old-rejected tag without alerting the player.
+  admin-player-tags:
+    title: "&8&lAdmin &7» &fTags of {player}"
+    size: 54
+    back-slot: 49
+  random-settings:
+    title: "&8&lRandom Tag &7» &fSettings"
+    size: 54
+    toggle-slot: 4
+    back-slot: 49
+  admin-reason:
+    title: "&8&lReject &7» &fChoose a reason"
+    size: 9
+    preset1-slot: 2
+    preset2-slot: 4
+    custom-slot: 6
+  # Optional: give any of these buttons a fully custom skin instead of the default material.
+  # Paste a raw "textures" base64 value (e.g. from minecraft-heads.com). Leave blank ("") to
+  # keep the default material/icon - a blank or invalid value never breaks the menu.
+  icons:
+    create-button: ""
+    create-button-locked: ""
+    list-button: ""
+
+book:
+  # page shown to the player before the editable page - purely informational, not read back by the
+  # plugin. A Minecraft book page is only ~114px wide, so this is kept deliberately short and NOT
+  # bold on the title line (bold glyphs are wider and were prone to wrapping mid-word on the
+  # narrowest client font). One short idea per line, blank lines only between paragraphs.
+  help-page: |
+    &8Custom Tag Editor
+
+    &7Turn the page,
+    &7write your tag.
+
+    &7Click &fDone &7or
+    &7&fSign &7when ready.
+
+    &7You'll see a preview
+    &7before it's sent.
+
+    &7Colors: legacy,
+    &7hex, and
+    &7MiniMessage all work.
+  # default editable page content given to the player
+  template-page: "&a&l[YourTag]"
+
+messages:
+  # leave this blank ("") to disable the prefix entirely, or replace it with your own server's branding
+  prefix: "&8[&bCustomTag&8] &r"
+  no-permission: "&cYou don't have permission to do that."
+  player-only: "&cThis command can only be used by players."
+  request-pending-block: "&cYou already have a pending request. Wait for it to be reviewed."
+  cooldown-active: "&cYou must wait &e{time}&c before requesting again."
+  no-tokens: "&cYou don't have enough tokens to create a new tag."
+  max-tags-reached: "&cYou reached the maximum number of tags ({max})."
+  request-submitted: "&aYour tag request has been submitted and is now pending admin review."
+  request-cancelled: "&eYour pending request was cancelled and your token was refunded."
+  request-approved-dm: "&aYour tag request was &2APPROVED&a! You can now select it."
+  request-rejected-dm: "&cYour tag request was &4REJECTED&c. Reason: &f{reason}"
+  tag-deleted: "&eTag deleted and token refunded."
+  tag-selected: "&aTag equipped."
+  tag-select-not-approved: "&cThis tag isn't approved yet."
+  tag-select-random-active: "&cRandom Tag mode is ON, so a single tag can't be manually selected. Turn it off in Random Tag Settings first."
+  edit-submitted: "&aYour edit was submitted for admin review (no token used)."
+  gui-book-given: "&aA tag book has been placed in your hand. Write on the SECOND page, then click Done (or Sign) - you'll get a preview to confirm before it's actually submitted."
+  # shown if the player clicks Done/Sign without actually changing the text on page 2 (still the
+  # default placeholder for a new tag, or unchanged from the current text when re-editing)
+  book-unedited: "&cYou didn't change anything - write your actual tag on page 2 before submitting."
+  chat-input-prompt: "&aType your tag in chat now, or type &ccancel&a to abort."
+  chat-input-cancelled: "&eTag creation cancelled and your token was refunded."
+  admin-reject-prompt: "&aType the rejection reason in chat, or type &ccancel&a to abort."
+  admin-reset-cooldown: "&aCooldown for {player} has been reset."
+  admin-gave-tokens: "&aGave {amount} token(s) to {player}."
+  admin-took-tokens: "&aTook {amount} token(s) from {player}."
+  reload-success: "&aConfiguration reloaded."
+  # shown when a creation book is signed but no longer matches the player's active reservation
+  # (e.g. they disconnected mid-creation and were already refunded) - see the README for details
+  reservation-expired: "&cThat creation attempt is no longer valid. Please start again."
+  # shown immediately if a player dies while holding an unfinished creation book
+  creation-lost-refunded: "&eYour in-progress tag creation was lost and your token was refunded."
+  # queued as a clickable message for the next time a player logs back in after disconnecting
+  # mid-creation (book not signed / chat not answered yet)
+  left-mid-creation: "&eYou disconnected while creating a tag - your token was refunded. &b&nClick here&e to start again."
+  resume-hover: "&7Click to reopen the tag creation menu"
+
+  # preset quick-reject reasons shown as buttons in the admin GUI (English only, shown to players)
+  reject-presets:
+    - "&cNot approved as submitted, please try a different tag."
+    - "&cInappropriate language is not allowed."
+
+  # ---- admin review menu (gui/AdminGUI) ----
+  # a request entry never shows the tag "live rendered" (that looked like a broken/glitchy tag) -
+  # it always shows plain, uncolored details instead: who, what they wrote, and when.
+  admin-request-player: "&7Player: &f{player}"
+  admin-request-text: "&7Wrote: &f{text}"
+  admin-request-date: "&7Submitted: &f{date}"
+  admin-request-actions-approve: "&8\u25B8 Left-click &7to approve"
+  admin-request-actions-reject: "&8\u25B8 Right-click &7to reject"
+  # both silent actions send no chat message to the player at all - the only difference is the token
+  admin-request-actions-silent-refund: "&8\u25B8 Shift+Right-click &7silent delete &a&l(refunds token)"
+  admin-request-actions-silent-no-refund: "&8\u25B8 Drop &7(&fQ&7) &7silent delete &c&l(NO token back)"
+  admin-no-requests-name: "&a&lAll caught up!"
+  admin-no-requests-lore: "&7There's nothing waiting for review right now."
+  # date/time pattern used by {date} above, Java SimpleDateFormat syntax
+  admin-date-format: "yyyy-MM-dd HH:mm"
+
+  # ---- live preview (see preview.enabled above / ChatInputListener) ----
+  # shown exactly as a live preview of what the player's tag will look like in chat, followed by
+  # clickable confirm/cancel lines - applies identically to BOTH creation methods (chat and book).
+  # Typing again in the chat method (or reopening a fresh book) before clicking just replaces the
+  # previous unconfirmed preview.
+  # placeholders: {player} {tag}
+  preview-header: "&8>> {player} {tag}&7: &fThats my tag <3"
+  preview-tag-line: "&8>> {tag}"
+  preview-footer: "&7This is a preview of your custom tag. Type it again to change it."
+  # shown instead of preview-footer when the preview came from the book method (retyping in chat
+  # doesn't apply here - the player would open a new book instead)
+  preview-footer-book: "&7This is a preview of your custom tag."
+  preview-confirm: "&a&l(Click to create this)"
+  preview-hover: "&7Click to submit this tag for admin review."
+  preview-cancel: "&c&l(Click to cancel)"
+  preview-cancel-hover: "&7Discard this and refund your token, if one was reserved."
+  preview-none-pending: "&cYou don't have a preview waiting for confirmation. Type your tag again."
+  preview-expired: "&cThat preview expired. Please type your tag again."
+
+  # ---- random tag rotation ----
+  random-not-enough-tags: "&cYou need at least {min} approved tags to use random tags."
+  random-entry-name: "&d&lRandom Tag Settings"
+  random-entry-lore-on: "&aRandom mode is &lON&a. Click to manage it."
+  random-entry-lore-off: "&7Random mode is off. Click to turn it on."
+  random-toggle-name-on: "&a&lRandom Mode: ON"
+  random-toggle-name-off: "&7&lRandom Mode: OFF"
+  random-toggle-lore-on: "&7Click to turn random mode off."
+  random-toggle-lore-off: "&7Click to turn random mode on."
+  random-tag-preview: "&7Preview: {tag}"
+  random-tag-selected: "&a\u2714 Included in random rotation. &7Click to remove."
+  random-tag-not-selected: "&7Click to include in random rotation."
+  random-tag-included-default: "&7Included by default &8(no subset chosen yet)&7. Click to pick a subset."
+  random-tag-click-hint: "&8Click to toggle"
+
+lore:
+  # lore shown on the player-head item in the main menu.
+  # placeholders: {tokens} {max-tags} {tag-count} {status} {status-detail}
+  profile:
+    - "&7Tokens: &f{tokens}"
+    - "&7Tags created: &f{tag-count}&7/&f{max-tags}"
+    - "&7Request status: {status}"
+    - "{status-detail}"
+  status-none: "&8None"
+  status-pending: "&ePending"
+  status-approved: "&aApproved"
+  status-rejected: "&cRejected"
+  detail-none: "&7You haven't submitted anything yet. Click to create one."
+  detail-pending: "&7Your request is awaiting admin review."
+  detail-approved: "&7Your tag is active and ready to use."
+  detail-rejected: "&7Reason: {reason}"
