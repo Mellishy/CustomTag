@@ -27,11 +27,12 @@ if you run into any issues or bugs, just let me know (open an issue) and i'll dr
 *papi placeholders included: `%customtag_tag%`, `%customtag_tag_raw%`, `%customtag_tokens%`, `%customtag_tagcount%`*
 
 ### setup 
-grab the latest `.jar` from the **releases** tab and drop it into your `plugins` folder.
+grab the latest `CustomTag-3.0.0.jar` from the **releases** tab and drop it into your `plugins` folder.
 
 if you want to build it yourself, run:
 ```bash
 mvn clean package
+clean package
 *(requires jdk 21 and maven 3.9+)*
 
 ### license
