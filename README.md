@@ -35,5 +35,5 @@ mvn clean package
 *(requires jdk 21 and maven 3.9+)*
 
 ### license
-[mit licensed](LICENSE). feel free to explore and modify. <3
+[mit licensed](./LICENSE) feel free to explore and modify. <3
 
