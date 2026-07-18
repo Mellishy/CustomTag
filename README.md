@@ -32,8 +32,7 @@ grab the latest `CustomTag-3.0.0.jar` from the **releases** tab and drop it into
 if you want to build it yourself, run:
 ```bash
 mvn clean package
-clean package
 *(requires jdk 21 and maven 3.9+)*
 
 ### license
-mit licensed. feel free to explore and modify. <3
+[mit licensed](LICENSE). feel free to explore and modify. <3
