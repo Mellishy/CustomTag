@@ -43,6 +43,7 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.parse(plugin.config().msg("player-only")));
                 return true;
             }
+            if (!requireUse(player)) return true;
             mainMenuGUI.open(player);
             return true;
         }
@@ -160,7 +161,7 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorUtil.parse(plugin.config().msg("reload-success")));
             }
             default -> {
-                if (sender instanceof Player player) {
+                if (sender instanceof Player player && requireUse(player)) {
                     mainMenuGUI.open(player);
                 }
             }
@@ -199,6 +200,22 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
 
     private boolean requireAdmin(CommandSender sender) {
         if (!sender.hasPermission("mellishy.admin")) {
+            sender.sendMessage(ColorUtil.parse(plugin.config().msg("no-permission")));
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * BUGFIX: previously the ENTIRE /customtag command was gated behind mellishy.use at the
+     * plugin.yml level, meaning a staff member who had mellishy.admin but NOT mellishy.use (e.g. an
+     * admin account deliberately kept out of the player-facing menu) was silently locked out of
+     * every admin subcommand too - admin and non-admin permissions were never actually independent.
+     * mellishy.use is now checked explicitly, only for the player-facing entry points that actually
+     * need it (opening the menu), so mellishy.admin alone is enough to use every admin subcommand.
+     */
+    private boolean requireUse(CommandSender sender) {
+        if (!sender.hasPermission("mellishy.use")) {
             sender.sendMessage(ColorUtil.parse(plugin.config().msg("no-permission")));
             return false;
         }
