@@ -228,6 +228,13 @@ public class GuiListener implements Listener {
         String tagId = holder.getContext(slot);
         if (tagId == null || tagId.equals("toggle")) return;
 
+        // BUGFIX: subset selection is only ever advertised (the "click to select" lore line in
+        // RandomSettingsGUI) once the player has at least random-tag.subset-unlock-tags approved
+        // tags - but this handler had no matching guard, so a click still silently narrowed the
+        // player's random pool even below that threshold, contradicting what the GUI showed them.
+        // Mirror RandomSettingsGUI#open's subsetUnlocked check exactly.
+        if (data.approvedTagCount() < cfg.randomSubsetUnlockTags()) return;
+
         if (data.getRandomTagPool().contains(tagId)) {
             data.getRandomTagPool().remove(tagId);
         } else {
