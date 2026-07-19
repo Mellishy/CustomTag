@@ -70,7 +70,19 @@ public class MySQLStorageBackend implements StorageBackend {
     public MySQLStorageBackend(JavaPlugin plugin, ConfigManager configManager) {
         this.plugin = plugin;
         this.configManager = configManager;
-        this.table = sanitizeIdentifier(configManager.mysqlTablePrefix()) + "players";
+        String rawPrefix = configManager.mysqlTablePrefix();
+        String sanitizedPrefix = sanitizeIdentifier(rawPrefix);
+        if (rawPrefix != null && !rawPrefix.trim().equals(sanitizedPrefix)) {
+            // BUGFIX: this used to happen silently - a mistyped/corrupted table-prefix (or one that
+            // sanitizes down to an empty string) would just quietly become "players" with no table
+            // name at all, which on a shared database can collide with another plugin's table with
+            // zero warning anywhere. Now the server owner is told exactly what changed and why.
+            plugin.getLogger().warning("[CustomTag] storage.mysql.table-prefix ('" + rawPrefix
+                    + "') contains characters that aren't safe in a table name and were removed - "
+                    + "using '" + sanitizedPrefix + "players' instead. Only letters, digits and "
+                    + "underscores are allowed in a table prefix.");
+        }
+        this.table = sanitizedPrefix + "players";
     }
 
     /**
