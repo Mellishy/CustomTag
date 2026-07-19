@@ -87,7 +87,12 @@ public class MainMenuGUI {
         for (String line : cfg.profileLore()) {
             lore.add(line
                     .replace("{tokens}", String.valueOf(data.getTokens()))
-                    .replace("{tag-count}", String.valueOf(data.getTags().size()))
+                    // BUGFIX: must mirror TagService#canOpenCreateMethod's activeTagCount() (PENDING +
+                    // APPROVED only), the same fix already applied to the "reason" reasons list a few
+                    // lines below. getTags().size() also counts REJECTED history, so a player who
+                    // accumulated rejected attempts could see e.g. "7/5 slots used" here while still
+                    // being fully able to create new tags - a misleading counter, not an actual limit.
+                    .replace("{tag-count}", String.valueOf(data.activeTagCount()))
                     .replace("{max-tags}", String.valueOf(cfg.maxTagsPerPlayer()))
                     .replace("{status}", status)
                     .replace("{status-detail}", detail));
@@ -139,7 +144,9 @@ public class MainMenuGUI {
                         "&7View, edit and select every",
                         "&7tag you've ever requested.",
                         "",
-                        "&7" + data.getTags().size() + "&8/&7" + cfg.maxTagsPerPlayer() + " &7slots used"
+                        // BUGFIX: same activeTagCount() vs getTags().size() fix as the profile lore
+                        // above - this counter must reflect what actually counts against the limit.
+                        "&7" + data.activeTagCount() + "&8/&7" + cfg.maxTagsPerPlayer() + " &7slots used"
                 ))
                 .build();
         inv.setItem(listSlot, listItem);
