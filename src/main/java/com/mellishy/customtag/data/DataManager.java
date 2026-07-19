@@ -141,9 +141,23 @@ public class DataManager {
             Map<UUID, PlayerData> loaded = backend.loadAll();
             cache.putAll(loaded);
             loaded.values().forEach(this::refreshRenderCache);
+            warnIfLargePlayerbaseWithoutEviction(loaded.size());
         } catch (Exception ex) {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data from " + backend.name() + " storage.", ex);
         }
+    }
+
+    /** Large enough that "every player who ever joined stays cached forever" (the default, see class
+     *  javadoc) starts being worth a heads-up rather than staying a silent, undocumented cost. */
+    private static final int LARGE_PLAYERBASE_THRESHOLD = 5000;
+
+    private void warnIfLargePlayerbaseWithoutEviction(int loadedCount) {
+        if (configManager.cacheEvictionEnabled() || loadedCount < LARGE_PLAYERBASE_THRESHOLD) return;
+        plugin.getLogger().warning("[CustomTag] Loaded " + loadedCount + " players' data at startup and "
+                + "storage.cache-eviction is disabled - every one of them will stay cached in memory for "
+                + "the rest of this session, and this same startup read happens again in full on every "
+                + "restart. Consider enabling storage.cache-eviction in config.yml if memory or startup "
+                + "time becomes a concern.");
     }
 
     private StorageBackend createBackend(String type) {
