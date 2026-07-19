@@ -39,14 +39,16 @@ public class ItemBuilder {
      * Builds a player-head item wearing a custom skin from a raw "textures" base64 value
      * (the kind of string sites like minecraft-heads.com give you). Used for the customizable
      * create/list button icons in config.yml (gui.icons.*). Falls back gracefully to a plain
-     * player head if the base64 is blank/invalid, or if this server's internals don't match
-     * the expected shape, so a bad config value or an unusual server fork can never break a GUI.
+     * player head if the base64 is blank/invalid, so a bad config value can never break a GUI.
      *
-     * Implemented via reflection into com.mojang.authlib.GameProfile (the same technique used by
-     * SkullCreator and most head-plugins) instead of org.bukkit.profile.PlayerProfile /
-     * com.destroystokyo.paper.profile.PlayerProfile, because the exact API shape for those two
-     * differs between Spigot/Paper versions and builds. Reflection sidesteps that entirely -
-     * there is no compile-time dependency on either package here.
+     * Uses Paper's official {@link com.destroystokyo.paper.profile.PlayerProfile}/{@link ProfileProperty}
+     * API (via {@code Bukkit.createProfile} + {@code SkullMeta#setPlayerProfile}) rather than reflecting
+     * into com.mojang.authlib internals - this plugin already depends on paper-api and Paper-only events
+     * elsewhere (see io.papermc.paper imports throughout the listener package), so there is no reason to
+     * take on the extra fragility of an undocumented private field just to avoid a compile-time Paper
+     * dependency that already exists. A failure here (malformed base64, future API change) is logged
+     * instead of swallowed, so a broken icon in config.yml shows up in the console instead of just quietly
+     * rendering as a plain head with no explanation.
      */
     public static ItemBuilder customHead(String base64) {
         ItemBuilder b = new ItemBuilder(Material.PLAYER_HEAD);
@@ -55,25 +57,15 @@ public class ItemBuilder {
         }
         try {
             if (b.meta instanceof SkullMeta skullMeta) {
-                Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
-                Class<?> propertyClass = Class.forName("com.mojang.authlib.properties.Property");
-
-                Object gameProfile = gameProfileClass.getConstructor(UUID.class, String.class)
-                        .newInstance(UUID.randomUUID(), null);
-                Object property = propertyClass.getConstructor(String.class, String.class)
-                        .newInstance("textures", base64.trim());
-
-                Object propertyMap = gameProfileClass.getMethod("getProperties").invoke(gameProfile);
-                propertyMap.getClass().getMethod("put", Object.class, Object.class)
-                        .invoke(propertyMap, "textures", property);
-
-                java.lang.reflect.Field profileField = skullMeta.getClass().getDeclaredField("profile");
-                profileField.setAccessible(true);
-                profileField.set(skullMeta, gameProfile);
+                com.destroystokyo.paper.profile.PlayerProfile profile =
+                        org.bukkit.Bukkit.createProfile(UUID.randomUUID(), null);
+                profile.setProperty(new com.destroystokyo.paper.profile.ProfileProperty("textures", base64.trim()));
+                skullMeta.setPlayerProfile(profile);
             }
-        } catch (Exception ignored) {
-            // malformed base64, or this server's internals don't match the expected shape -
-            // just fall back to a plain head instead of breaking the GUI
+        } catch (Exception ex) {
+            org.bukkit.Bukkit.getLogger().warning("[CustomTag] Could not apply custom head texture from config.yml "
+                    + "(gui.icons.* base64 value) - falling back to a plain player head. Check the value isn't "
+                    + "truncated or corrupted. Cause: " + ex.getMessage());
         }
         return b;
     }
