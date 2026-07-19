@@ -12,7 +12,6 @@ commands:
     aliases: [ct]
     description: Open the Mellishy custom tag menu.
     usage: /customtag [admin|give|take|resetcooldown|reload|managetags]
-    permission: mellishy.use
 
 permissions:
   mellishy.use:
