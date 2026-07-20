@@ -145,7 +145,14 @@ public class GuiListener implements Listener {
                 createMethodGUI.open(player, tagId, CreateMethodGUI.Origin.TAG_LIST);
             }
             case RIGHT -> {
-                plugin.tagService().selectTag(player, tagId);
+                // Right-click toggles: unequip if this is the currently-equipped tag, otherwise
+                // equip it. Mirrors the equip/unequip pair exposed by TagService, and matches the
+                // "Right-click to unselect" lore TagListGUI shows for the active tag.
+                if (tagId.equals(data.getActiveTagId())) {
+                    plugin.tagService().unselectTag(player, tagId);
+                } else {
+                    plugin.tagService().selectTag(player, tagId);
+                }
                 tagListGUI.open(player);
             }
             case DROP, CONTROL_DROP -> {

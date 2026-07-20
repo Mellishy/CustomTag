@@ -248,6 +248,21 @@ public class TagService implements Listener {
     }
 
     /**
+     * Mirrors {@link #selectTag}: unequips a tag rather than equipping one. Only clears
+     * activeTagId when it's actually the one currently equipped - a stale/late click (e.g. the
+     * player equipped a different tag from another session/window first) must not blow away
+     * whatever is genuinely active right now.
+     */
+    public void unselectTag(Player player, String tagId) {
+        ConfigManager cfg = plugin.config();
+        PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
+        if (!tagId.equals(data.getActiveTagId())) return;
+        data.setActiveTagId(null);
+        plugin.data().save(data);
+        msg(player, cfg.msg("tag-unselected"));
+    }
+
+    /**
      * Keeps random-tag state honest whenever a tag stops existing or stops being APPROVED (deleted,
      * silently removed, or rejected after being approved before): drops it from the player's manual
      * rotation subset, and formally turns random mode back off (instead of just letting it silently

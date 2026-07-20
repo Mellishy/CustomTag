@@ -36,8 +36,14 @@ public class ConfigManager {
         return cfg.getInt("tokens.starting-amount", 3);
     }
 
+    /**
+     * BUGFIX: no lower bound used to be enforced here. A negative value (e.g. an admin typo like
+     * "-10" instead of "10") still functionally blocked every new tag (since activeTagCount() can
+     * never be negative), but produced a nonsensical "&7X&8/&7-10 slots used" readout in every menu
+     * (MainMenuGUI, TagListGUI) instead of a sane, always-non-negative limit.
+     */
     public int maxTagsPerPlayer() {
-        return cfg.getInt("tokens.max-tags-per-player", 10);
+        return Math.max(0, cfg.getInt("tokens.max-tags-per-player", 10));
     }
 
     /** Max VISIBLE (plain, colors stripped) length allowed for a submitted tag - see tokens.max-tag-length. */
@@ -236,14 +242,19 @@ public class ConfigManager {
 
     // ----- random tag rotation -----
 
-    /** Minimum APPROVED tags required before the random-tag feature can even be turned on. */
+    /**
+     * Minimum APPROVED tags required before the random-tag feature can even be turned on. Floored
+     * at 0 for the same reason as {@link #maxTagsPerPlayer()} - a negative value here would still
+     * behave like "always allowed" (any tag count is >= a negative number) but would print a
+     * confusing "&7Need at least &f-3&7 approved tags" message to players instead of a sane one.
+     */
     public int randomMinTags() {
-        return cfg.getInt("random-tag.min-tags", 2);
+        return Math.max(0, cfg.getInt("random-tag.min-tags", 2));
     }
 
     /** From this many approved tags onward, the dedicated subset-picker menu becomes meaningful/unlocked. */
     public int randomSubsetUnlockTags() {
-        return cfg.getInt("random-tag.subset-unlock-tags", 4);
+        return Math.max(0, cfg.getInt("random-tag.subset-unlock-tags", 4));
     }
 
     // ----- chat preview (see ChatInputListener / preview confirmation flow) -----

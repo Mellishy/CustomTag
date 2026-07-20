@@ -63,7 +63,19 @@ public class TagListGUI {
             boolean inRandomPool = randomActive && randomPool.stream().anyMatch(t -> t.getId().equals(tag.getId()));
 
             List<String> lore = new ArrayList<>();
-            lore.add("&7Preview: " + tag.getRawText());
+            // BUGFIX: this used to concatenate the raw, unfiltered tag text straight into the lore
+            // line (later parsed with full ColorUtil.parse() by ItemBuilder). Every OTHER place a
+            // tag is shown to any audience (AdminGUI, AdminPlayerTagsGUI, ChatTagListener,
+            // MellishyPlaceholder) is careful to either strip it to plain text or run it through
+            // parseForOthers() so an interactive MiniMessage payload (click/hover) can never be
+            // smuggled in - this was the one inconsistent spot, letting a player embed a
+            // <click:run_command:'...'> etc. into their own tag list's lore. Round-tripping through
+            // parseForOthers() + toLegacyString() keeps every cosmetic color/gradient/format intact
+            // (so the preview still looks exactly like the real rendered tag) while guaranteeing the
+            // string handed to ItemBuilder.lore() (which re-parses it) no longer contains any
+            // interactive tag syntax to begin with.
+            String safePreview = ColorUtil.toLegacyString(ColorUtil.parseForOthers(tag.getRawText()));
+            lore.add("&7Preview: " + safePreview);
             lore.add("&7Status: " + statusColor + prettyStatus(tag.getStatus()));
             if (tag.getStatus() == TagStatus.REJECTED && tag.getRejectReason() != null) {
                 lore.add("&7Reason: &f" + tag.getRejectReason());
@@ -83,6 +95,10 @@ public class TagListGUI {
                 // just say "selected" and do nothing. Tell the player why instead.
                 if (randomActive) {
                     lore.add("&8\u25B8 &7Random mode is &d&lON&7 \u2014 manual select disabled");
+                } else if (active) {
+                    // Right-click is a toggle (see GuiListener#handleTagList) - once a tag is
+                    // equipped, the same button unequips it again instead of being a dead end.
+                    lore.add("&8\u25B8 Right-click &7to unselect");
                 } else {
                     lore.add("&8\u25B8 Right-click &7to select");
                 }

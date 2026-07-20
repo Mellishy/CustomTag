@@ -196,7 +196,18 @@ public class ChatInputListener implements Listener {
         player.sendMessage(ColorUtil.parse(cfg.msg("chat-input-cancelled")));
     }
 
-    /** Called from /customtag confirmcreate (the click target of the "(Click to create this)" line). */
+    /**
+     * Called from /customtag confirmcreate (the click target of the "(Click to create this)" line).
+     *
+     * NOTE on expiry: if the preview is too old, this returns early WITHOUT touching
+     * {@link #awaiting} or refunding the reservation - both are deliberately left exactly as they
+     * were. The player is still in chat-input mode (see {@link #handle}), so simply retyping in
+     * chat shows them a brand-new, fresh preview using the same still-reserved token; nothing is
+     * lost and no extra token is charged. The reservation itself is only ever cleared by an explicit
+     * cancel (typing "cancel" / clicking cancel) or by disconnecting (see
+     * {@link com.mellishy.customtag.service.TagService#handleDisconnect}) - expiry of the PREVIEW is
+     * intentionally a much softer, resumable state than losing the reservation entirely.
+     */
     public void confirmPreview(Player player) {
         ConfigManager cfg = plugin.config();
         PendingPreview preview = previews.remove(player.getUniqueId());

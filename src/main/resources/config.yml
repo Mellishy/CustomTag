@@ -237,6 +237,7 @@ messages:
   request-rejected-dm: "&cYour tag request was &4REJECTED&c. Reason: &f{reason}"
   tag-deleted: "&eTag deleted and token refunded."
   tag-selected: "&aTag equipped."
+  tag-unselected: "&eTag unequipped."
   tag-select-not-approved: "&cThis tag isn't approved yet."
   tag-select-random-active: "&cRandom Tag mode is ON, so a single tag can't be manually selected. Turn it off in Random Tag Settings first."
   edit-submitted: "&aYour edit was submitted for admin review (no token used)."

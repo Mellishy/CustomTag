@@ -95,7 +95,7 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
                 String rawName = args[1];
                 resolveOfflineTarget(rawName, target -> {
                     UUID uuid = target.getUniqueId();
-                    PlayerData data = plugin.data().get(uuid, target.getName() != null ? target.getName() : rawName);
+                    PlayerData data = loadTargetData(uuid, target.getName() != null ? target.getName() : rawName);
                     data.addTokens(signedAmount);
                     plugin.data().save(data);
                     sender.sendMessage(ColorUtil.parse(plugin.config().msg(key)
@@ -143,7 +143,7 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
                 }
                 String rawName = args[1];
                 resolveOfflineTarget(rawName, target -> {
-                    PlayerData data = plugin.data().get(target.getUniqueId(), target.getName() != null ? target.getName() : rawName);
+                    PlayerData data = loadTargetData(target.getUniqueId(), target.getName() != null ? target.getName() : rawName);
                     plugin.cooldown().reset(data);
                     plugin.data().save(data);
                     sender.sendMessage(ColorUtil.parse(plugin.config().msg("admin-reset-cooldown").replace("{player}", rawName)));
@@ -167,6 +167,25 @@ public class CustomTagCommand implements CommandExecutor, TabCompleter {
             }
         }
         return true;
+    }
+
+    /**
+     * BUGFIX: give/take/resetcooldown used to call {@code plugin.data().get(uuid, name)} directly,
+     * which only checks the in-memory cache and silently fabricates a brand-new, blank
+     * {@link PlayerData} (default starting tokens, no tags, no cooldown) if the target isn't
+     * currently cached - exactly what happens to an offline player once
+     * {@code storage.cache-eviction} (see {@link com.mellishy.customtag.data.DataManager#scheduleEviction})
+     * has dropped them from memory. Saving that blank object right afterwards (as every one of
+     * these commands does) would silently OVERWRITE the player's real backend record - their
+     * actual tags, tokens and cooldown - with an empty one. {@code TagService#loadTarget} already
+     * guards against exactly this for admin GUI actions by calling {@code ensureLoaded} first; this
+     * helper applies the same guard here so every admin command that touches an offline player's
+     * data goes through the same safe path. A no-op (single cheap map lookup) whenever
+     * cache-eviction is disabled or the player was never evicted in the first place.
+     */
+    private PlayerData loadTargetData(UUID uuid, String nameIfNew) {
+        plugin.data().ensureLoaded(uuid, nameIfNew);
+        return plugin.data().get(uuid, nameIfNew);
     }
 
     /**

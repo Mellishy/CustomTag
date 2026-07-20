@@ -13,7 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * One YAML file per player under {@code <plugin-data-folder>/<storage.folder>/<uuid>.yml}.
@@ -26,6 +30,27 @@ public class YamlStorageBackend implements StorageBackend {
     private final JavaPlugin plugin;
     private final ConfigManager configManager;
     private File folder;
+
+    /**
+     * BUGFIX: {@link #saveAll(java.util.Collection)} used to save every player sequentially
+     * (a plain {@code forEach}), unlike {@link MySQLStorageBackend} and {@link MongoStorageBackend},
+     * which both save their full batch in parallel. On a server with a large player base still on
+     * the default YAML backend, that made {@code DataManager#shutdown()} - and therefore the whole
+     * server's shutdown/reload - take needlessly long, since one slow disk write blocked every
+     * other player's write behind it for no reason. Each save is an independent file, so there's no
+     * correctness reason to serialize them. Deliberately its own small pool, not
+     * {@code parallelStream()}'s shared common {@code ForkJoinPool} - same reasoning as the pools in
+     * {@link MySQLStorageBackend}/{@link MongoStorageBackend}: that pool is shared with the rest of
+     * the JVM (server internals, other plugins), and a large save batch during shutdown shouldn't
+     * compete with unrelated parallel work happening at the same time.
+     */
+    private final ExecutorService saveAllExecutor = Executors.newFixedThreadPool(
+            Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())),
+            r -> {
+                Thread t = new Thread(r, "CustomTag-Yaml-SaveAll");
+                t.setDaemon(true);
+                return t;
+            });
 
     public YamlStorageBackend(JavaPlugin plugin, ConfigManager configManager) {
         this.plugin = plugin;
@@ -164,14 +189,36 @@ public class YamlStorageBackend implements StorageBackend {
         }
     }
 
+    /**
+     * Runs in parallel on {@link #saveAllExecutor} - see that field's javadoc for why this changed
+     * from a sequential {@code forEach}. Blocks (with a 30-second safety timeout, matching
+     * {@link MySQLStorageBackend#saveAll}/{@link MongoStorageBackend#saveAll}) until every save in
+     * the batch has actually finished, so callers - namely {@code DataManager#shutdown()} - can rely
+     * on saveAll() having genuinely completed, not just having been "queued".
+     */
     @Override
     public void saveAll(java.util.Collection<PlayerData> data) {
-        data.forEach(this::save);
+        List<CompletableFuture<Void>> futures = data.stream()
+                .map(d -> CompletableFuture.runAsync(() -> save(d), saveAllExecutor))
+                .toList();
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(30, TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            plugin.getLogger().warning("Timed out or failed while waiting for the YAML saveAll batch to finish: " + ex.getMessage());
+        }
     }
 
     @Override
     public void close() {
-        // nothing to release for flat files
+        saveAllExecutor.shutdown();
+        try {
+            if (!saveAllExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                saveAllExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            saveAllExecutor.shutdownNow();
+        }
     }
 
     @Override
