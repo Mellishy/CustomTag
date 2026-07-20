@@ -4,7 +4,7 @@ a simple, token-based custom tag plugin for paper 1.21.11.
 ### what is this
 a custom tag request system where players spend tokens to get their unique tags. admins approve or deny them through a clean gui, keeping everything organized and easy to manage.
 
-### v3.0.0 features
+### v3.2.0 features
 - **smart menus:** gui colors now track status (gray/none, orange/pending, green/approved, red/rejected).
 - **live preview:** see exactly how your tag looks in chat before submitting it.
 - **stealth moderation:** drop (q) to delete, or shift-right-click to reject and refund. no spammy messages.
