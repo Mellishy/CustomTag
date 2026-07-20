@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.2.0 — Unselect Tag
+
+### Added
+
+- **Unselect (unequip) an equipped tag from `TagListGUI`.** Right-click on a tag was previously a
+  one-way action - once equipped, there was no way back to "no tag" short of equipping a different
+  one. Right-click is now a toggle: on the currently-equipped tag it unequips instead, and the lore
+  updates from `Right-click to select` to `Right-click to unselect` to match. Implemented as
+  `TagService#unselectTag`, a direct mirror of the existing `selectTag`, guarded the same way
+  (re-fetches `PlayerData` and only clears `activeTagId` if it still matches the clicked tag, so a
+  stale click can't stomp on a different tag equipped in the meantime). Random Tag mode is
+  unaffected: while it's live, `TagListGUI` never marks any tag "active" and the lore still shows
+  the existing "manual select disabled" notice, so this button is simply not offered.
+
+### New message key (config.yml → messages)
+
+```yaml
+messages:
+  tag-unselected: "&eTag unequipped."
+```
+
 ## 3.1.0 — Code Review Bugfix Release
 
 ### Fixed
