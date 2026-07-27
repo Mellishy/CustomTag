@@ -70,7 +70,7 @@ public class MainMenuGUI {
                 theme = plugin.guiStates().approved();
             } else if (lastRejected.isPresent()) {
                 status = cfg.loreValue("status-rejected");
-                detail = cfg.loreValue("detail-rejected").replace("{reason}", lastRejected.get().getRejectReason() == null ? "-" : lastRejected.get().getRejectReason());
+                detail = cfg.loreValue("detail-rejected").replace("{reason}", lastRejected.get().getRejectReason() == null ? "-" : ColorUtil.capLoreText(lastRejected.get().getRejectReason()));
                 theme = plugin.guiStates().rejected();
             } else {
                 status = cfg.loreValue("status-none");
@@ -86,6 +86,9 @@ public class MainMenuGUI {
         List<String> lore = new ArrayList<>();
         for (String line : cfg.profileLore()) {
             lore.add(line
+                    // the player's permanent custom id - the same id staff see
+                    // in the queue, audit log and Discord, so support conversations line up
+                    .replace("{custom_id}", plugin.platform().playerIds().display(player.getUniqueId()))
                     .replace("{tokens}", String.valueOf(data.getTokens()))
                     // BUGFIX: must mirror TagService#canOpenCreateMethod's activeTagCount() (PENDING +
                     // APPROVED only), the same fix already applied to the "reason" reasons list a few

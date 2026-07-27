@@ -149,6 +149,48 @@ public final class GuiFrame {
         return new ContentGrid(startSlot, lastSlot);
     }
 
+    /**
+     * How many content items fit on one page of a bordered menu of this size (interior rows × 7
+     * interior columns). Shared by every paginated menu so AdminGUI / TagListGUI /
+     * AdminPlayerTagsGUI cannot drift apart on the math.
+     */
+    public static int contentPerPage(int size) {
+        ContentGrid grid = contentGrid(size);
+        if (grid.isPastEnd(grid.startSlot())) return 1;
+        int interiorRows = Math.max(1, ((grid.lastSlot() / 9) - (grid.startSlot() / 9)) + 1);
+        return Math.max(1, interiorRows * 7);
+    }
+
+    /**
+     * The interior content grid only ever uses columns 1-7 - columns 0 and 8 are the borders.
+     * If {@code slot} has landed on column 8, skip both that border and the next row's column-0
+     * border, landing on column 1 of the next row.
+     */
+    public static int skipBorderColumn(int slot) {
+        return (slot + 1) % 9 == 0 ? slot + 2 : slot;
+    }
+
+    /**
+     * Prev/Next footer used by every paginated menu. Slot keys are {@code prev-page-slot} /
+     * {@code next-page-slot} under {@code gui.<menu>}. Disabled buttons stay visible but inert -
+     * the listener must still check {@link MellishyInventoryHolder#getPage()} bounds.
+     */
+    public static void renderPageFooter(Inventory inv, ConfigManager cfg, String menu,
+                                        int currentPage, int totalPages) {
+        int prevSlot = cfg.guiSlot(menu, "prev-page-slot");
+        int nextSlot = cfg.guiSlot(menu, "next-page-slot");
+        boolean hasPrev = currentPage > 0;
+        boolean hasNext = currentPage < totalPages - 1;
+        inv.setItem(prevSlot, new ItemBuilder(hasPrev ? Material.ARROW : Material.GRAY_DYE)
+                .name(hasPrev ? "&e&l\u25C0 Previous Page" : "&7\u25C0 Previous Page")
+                .lore(hasPrev ? java.util.List.of() : java.util.List.of("&8Already on the first page"))
+                .build());
+        inv.setItem(nextSlot, new ItemBuilder(hasNext ? Material.ARROW : Material.GRAY_DYE)
+                .name(hasNext ? "&e&lNext Page \u25B6" : "&7Next Page \u25B6")
+                .lore(hasNext ? java.util.List.of() : java.util.List.of("&8Already on the last page"))
+                .build());
+    }
+
     /** Resolves a config material name, falling back safely (blank/invalid name never breaks a menu). */
     public static Material materialOrFallback(String name, Material fallback) {
         if (name == null || name.isBlank()) return fallback;

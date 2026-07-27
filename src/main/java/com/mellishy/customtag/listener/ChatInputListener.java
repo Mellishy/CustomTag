@@ -79,7 +79,16 @@ public class ChatInputListener implements Listener {
     }
 
     private void handle(Player player, PendingInput pending, String message) {
-        awaiting.remove(player.getUniqueId());
+        // Claim the input slot, and bail out if somebody already claimed it. onChat runs on Paper's
+        // async chat thread and only READS `awaiting`, so a player who sends two messages in the same
+        // instant gets two of these scheduled off the SAME pending input - which, with preview
+        // disabled, meant two TagSubmitEvents carrying one single reservation id, and with
+        // ADMIN_REASON meant the same request being rejected twice. Both handlers run here on the main
+        // thread, in order, so this compare-and-remove lets exactly the first one through.
+        //
+        // The retype flow (preview enabled) deliberately still works: it puts an equal PendingInput
+        // straight back, so a genuine follow-up message claims it again and just replaces the preview.
+        if (!awaiting.remove(player.getUniqueId(), pending)) return;
         ConfigManager cfg = plugin.config();
 
         if (message.equalsIgnoreCase("cancel")) {

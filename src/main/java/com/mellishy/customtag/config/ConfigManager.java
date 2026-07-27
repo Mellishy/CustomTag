@@ -10,11 +10,19 @@ import java.util.Set;
 /**
  * Thin wrapper around config.yml so nothing in the codebase is hardcoded.
  * Call {@link #reload()} to hot-reload after /customtag reload.
+ *
+ * THREAD SAFETY: almost every getter here is called on the main thread, but two are not -
+ * {@link com.mellishy.customtag.listener.ChatTagListener} reads {@link #chatFormat()} on Paper's
+ * async chat thread and {@link com.mellishy.customtag.placeholder.MellishyPlaceholder} reads
+ * {@link #placeholderEmptyValue()} on whatever thread the requesting plugin uses. Reading a
+ * loaded {@link FileConfiguration} concurrently is fine; swapping the reference out from under
+ * those readers on reload is not, which is why the field is volatile.
  */
 public class ConfigManager {
 
     private final JavaPlugin plugin;
-    private FileConfiguration cfg;
+    /** volatile: replaced by {@link #reload()} on the main thread, read from async threads - see class javadoc. */
+    private volatile FileConfiguration cfg;
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -25,7 +33,11 @@ public class ConfigManager {
     public void reload() {
         plugin.reloadConfig();
         this.cfg = plugin.getConfig();
+        // re-arm the one-time warnings: the reloaded file may have brand-new problems, and staying
+        // quiet about them because the same key was already reported hours ago helps nobody
         warnedMissingSlots.clear();
+        warnedBadSizes.clear();
+        warnedOutOfRangeSlots.clear();
     }
 
     public FileConfiguration raw() {
@@ -190,9 +202,29 @@ public class ConfigManager {
         return cfg.getString("gui." + menu + ".title", menu);
     }
 
+    /**
+     * Bukkit only accepts a chest size that is a multiple of 9 between 9 and 54 - anything else
+     * makes {@code createInventory} throw an IllegalArgumentException. This value came straight from
+     * config.yml unchecked, so a single mistyped {@code size: 50} took that whole menu out with a
+     * stack trace every time anyone tried to open it.
+     *
+     * Rounded UP to the nearest legal size, with a one-time warning, so the mistake degrades into
+     * "a slightly roomier menu than I asked for" rather than a dead feature. Rounding up rather than
+     * down also keeps the menu's configured slots in range wherever possible.
+     */
     public int guiSize(String menu) {
-        return cfg.getInt("gui." + menu + ".size", 27);
+        int raw = cfg.getInt("gui." + menu + ".size", 27);
+        int clamped = Math.clamp((raw + 8) / 9 * 9, 9, 54);
+        if (clamped != raw && warnedBadSizes.add(menu)) {
+            plugin.getLogger().warning("[CustomTag] gui." + menu + ".size is " + raw
+                    + ", which is not a usable chest size - using " + clamped + " instead. Valid sizes are "
+                    + "multiples of 9 from 9 to 54.");
+        }
+        return clamped;
     }
+
+    private final Set<String> warnedBadSizes = new HashSet<>();
+    private final Set<String> warnedOutOfRangeSlots = new HashSet<>();
 
     /**
      * Missing slot keys used to silently fall back to slot 0 with zero indication anything was
@@ -209,7 +241,22 @@ public class ConfigManager {
             plugin.getLogger().warning("[CustomTag] Missing config key '" + path
                     + "' - falling back to slot 0. Check your config.yml for a deleted or mistyped slot entry.");
         }
-        return cfg.getInt(path, 0);
+        int configured = cfg.getInt(path, 0);
+        // Inventory#setItem throws for a slot outside the inventory, and the shipped defaults are
+        // written for the default size (e.g. back-slot: 49) - so shrinking one menu's `size` without
+        // also moving every button in it used to crash that menu on open. Fold it back into range
+        // instead: a button in an odd place is a cosmetic problem, an unopenable menu is not.
+        int size = guiSize(menu);
+        if (configured < 0 || configured >= size) {
+            int corrected = Math.clamp(configured, 0, size - 1);
+            if (warnedOutOfRangeSlots.add(path)) {
+                plugin.getLogger().warning("[CustomTag] " + path + " is slot " + configured
+                        + " but gui." + menu + ".size is only " + size + " - using slot " + corrected
+                        + " instead. Lower the slot numbers in this menu or raise its size.");
+            }
+            return corrected;
+        }
+        return configured;
     }
 
     // ----- theme (nothing here is hardcoded - any Material name works, blank/invalid falls back safely) -----

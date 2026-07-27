@@ -15,6 +15,12 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Player's own tag inventory. Paginated the same way as {@link AdminGUI}: once a player has more
+ * tags than fit in the content grid (common when {@code tokens.max-rejected-history} is raised or
+ * set to unlimited), older tags used to vanish from the menu with no way to reach them. Pages keep
+ * every tag selectable / editable / deletable.
+ */
 public class TagListGUI {
 
     private final MellishyCustomTag plugin;
@@ -24,29 +30,45 @@ public class TagListGUI {
     }
 
     public void open(Player player) {
+        open(player, 0);
+    }
+
+    public void open(Player player, int page) {
         ConfigManager cfg = plugin.config();
         PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
 
         int size = cfg.guiSize("tag-list");
+        List<TagEntry> tags = List.copyOf(data.getTags());
+        int perPage = GuiFrame.contentPerPage(size);
+        int totalPages = Math.max(1, (int) Math.ceil(tags.size() / (double) perPage));
+        int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+        String rawTitle = cfg.guiTitle("tag-list");
+        if (rawTitle.length() > 48) rawTitle = rawTitle.substring(0, 48);
+        String title = totalPages > 1
+                ? rawTitle + " &7[" + (currentPage + 1) + "/" + totalPages + "]"
+                : rawTitle;
+
         MellishyInventoryHolder holder = new MellishyInventoryHolder(GuiType.TAG_LIST);
-        Inventory inv = plugin.getServer().createInventory(holder, size, ColorUtil.parse(cfg.guiTitle("tag-list")));
+        Inventory inv = plugin.getServer().createInventory(holder, size, ColorUtil.parse(title));
         holder.setInventory(inv);
+        holder.setPage(currentPage);
+        holder.setTotalPages(totalPages);
 
         GuiFrame.border(inv, size, cfg);
 
-        // While random rotation is actually in effect, there is no single "equipped" tag anymore -
-        // a different one is picked per chat message (see ChatTagListener#resolveTag). Showing the
-        // stale single active-tag as "Currently equipped" here would be misleading, so that whole
-        // indicator is suppressed while random mode is live, and tags that are part of the rotation
-        // pool get their own distinct indicator instead.
         boolean randomActive = data.isRandomTagEnabled() && data.approvedTagCount() >= cfg.randomMinTags();
         List<TagEntry> randomPool = randomActive ? data.resolveRandomPool() : List.of();
 
+        int from = currentPage * perPage;
+        int to = Math.min(from + perPage, tags.size());
+        List<TagEntry> pageSlice = tags.isEmpty() ? List.of() : tags.subList(from, to);
+
         GuiFrame.ContentGrid grid = GuiFrame.contentGrid(size);
         int slot = grid.startSlot();
-        for (TagEntry tag : data.getTags()) {
-            if (grid.isPastEnd(slot)) break; // safety, keep within the actual configured inventory size
-            if ((slot + 1) % 9 == 0) slot += 2; // skip the right/left border columns
+        for (TagEntry tag : pageSlice) {
+            if (grid.isPastEnd(slot)) break;
+            slot = GuiFrame.skipBorderColumn(slot);
 
             Material mat = switch (tag.getStatus()) {
                 case APPROVED -> Material.NAME_TAG;
@@ -63,22 +85,12 @@ public class TagListGUI {
             boolean inRandomPool = randomActive && randomPool.stream().anyMatch(t -> t.getId().equals(tag.getId()));
 
             List<String> lore = new ArrayList<>();
-            // BUGFIX: this used to concatenate the raw, unfiltered tag text straight into the lore
-            // line (later parsed with full ColorUtil.parse() by ItemBuilder). Every OTHER place a
-            // tag is shown to any audience (AdminGUI, AdminPlayerTagsGUI, ChatTagListener,
-            // MellishyPlaceholder) is careful to either strip it to plain text or run it through
-            // parseForOthers() so an interactive MiniMessage payload (click/hover) can never be
-            // smuggled in - this was the one inconsistent spot, letting a player embed a
-            // <click:run_command:'...'> etc. into their own tag list's lore. Round-tripping through
-            // parseForOthers() + toLegacyString() keeps every cosmetic color/gradient/format intact
-            // (so the preview still looks exactly like the real rendered tag) while guaranteeing the
-            // string handed to ItemBuilder.lore() (which re-parses it) no longer contains any
-            // interactive tag syntax to begin with.
+            // parseForOthers + toLegacyString: keeps cosmetics, strips interactive MiniMessage
             String safePreview = ColorUtil.toLegacyString(ColorUtil.parseForOthers(tag.getRawText()));
             lore.add("&7Preview: " + safePreview);
             lore.add("&7Status: " + statusColor + prettyStatus(tag.getStatus()));
             if (tag.getStatus() == TagStatus.REJECTED && tag.getRejectReason() != null) {
-                lore.add("&7Reason: &f" + tag.getRejectReason());
+                lore.add("&7Reason: &f" + ColorUtil.capLoreText(tag.getRejectReason()));
             }
             if (active) {
                 lore.add("");
@@ -90,14 +102,9 @@ public class TagListGUI {
             lore.add("");
             lore.add("&8\u25B8 Left-click &7to edit");
             if (tag.getStatus() == TagStatus.APPROVED) {
-                // Manual selection has no effect while random rotation is live (chat always rolls
-                // from the pool instead - see ChatTagListener), so don't invite a click that would
-                // just say "selected" and do nothing. Tell the player why instead.
                 if (randomActive) {
                     lore.add("&8\u25B8 &7Random mode is &d&lON&7 \u2014 manual select disabled");
                 } else if (active) {
-                    // Right-click is a toggle (see GuiListener#handleTagList) - once a tag is
-                    // equipped, the same button unequips it again instead of being a dead end.
                     lore.add("&8\u25B8 Right-click &7to unselect");
                 } else {
                     lore.add("&8\u25B8 Right-click &7to select");
@@ -105,13 +112,11 @@ public class TagListGUI {
             }
             lore.add("&8\u25B8 Drop &7(&fQ&7) &7to delete");
 
-            ItemStack item = new ItemBuilder(mat)
+            inv.setItem(slot, new ItemBuilder(mat)
                     .name(statusColor + "&l" + prettyStatus(tag.getStatus()))
                     .lore(lore)
                     .glow(active || inRandomPool)
-                    .build();
-
-            inv.setItem(slot, item);
+                    .build());
             holder.putContext(slot, tag.getId());
             slot++;
         }
@@ -123,9 +128,6 @@ public class TagListGUI {
         if (!canCreate) {
             if (data.hasPending()) createLore.add("&cYou already have a pending request.");
             else if (data.getTokens() <= 0) createLore.add("&cYou have no tokens left.");
-            // BUGFIX: same fix as MainMenuGUI#open - must mirror TagService#canOpenCreateMethod's
-            // activeTagCount() check, not getTags().size() (which also counts REJECTED history and
-            // could show this reason for the wrong cause, or hide the real one - e.g. a cooldown).
             else if (data.activeTagCount() >= cfg.maxTagsPerPlayer()) createLore.add("&cMax tags reached.");
             else if (plugin.cooldown().isOnCooldown(data))
                 createLore.add("&cCooldown: &f" + plugin.cooldown().formatDuration(plugin.cooldown().remainingSeconds(data)));
@@ -144,7 +146,6 @@ public class TagListGUI {
         int backSlot = cfg.guiSlot("tag-list", "back-slot");
         inv.setItem(backSlot, new ItemBuilder(Material.ARROW).name("&7&lBack").build());
 
-        // ---- random tag rotation entry point ----
         long approvedCount = data.approvedTagCount();
         int randomSlot = cfg.guiSlot("tag-list", "random-slot");
         boolean randomAvailable = approvedCount >= cfg.randomMinTags();
@@ -160,6 +161,7 @@ public class TagListGUI {
                 .glow(data.isRandomTagEnabled())
                 .build());
 
+        GuiFrame.renderPageFooter(inv, cfg, "tag-list", currentPage, totalPages);
         GuiFrame.fillEmptyCheckered(inv, size, cfg);
 
         player.openInventory(inv);

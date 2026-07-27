@@ -128,4 +128,18 @@ public final class ColorUtil {
         if (raw == null || raw.isBlank()) return "";
         return PlainTextComponentSerializer.plainText().serialize(parse(raw));
     }
+
+    /**
+     * Hard cap for text that ends up in item lore (reject reasons, free-form staff notes, ...).
+     * Minecraft disconnects clients on oversized item NBT packets; TagService already caps reasons
+     * at write time, but lore render sites still clamp here so a hand-edited data file or an
+     * older pre-cap dump can never kick whoever opens the menu.
+     */
+    public static final int LORE_TEXT_CAP = 128;
+
+    public static String capLoreText(String text) {
+        if (text == null) return "";
+        if (text.length() <= LORE_TEXT_CAP) return text;
+        return text.substring(0, LORE_TEXT_CAP - 3) + "...";
+    }
 }

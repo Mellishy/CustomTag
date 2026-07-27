@@ -11,6 +11,7 @@ public final class Keys {
     private static NamespacedKey bookReservation;
     private static NamespacedKey bookOriginalText;
     private static NamespacedKey bookSavedHand;
+    private static NamespacedKey bookOwner;
 
     /** Value stored: "new" for a brand-new tag, or the tag-id being edited. */
     public static NamespacedKey bookTarget() {
@@ -58,5 +59,20 @@ public final class Keys {
             bookReservation = new NamespacedKey(MellishyCustomTag.getInstance(), "book_reservation");
         }
         return bookReservation;
+    }
+
+    /**
+     * Value stored: the UUID of the player the book was handed to.
+     *
+     * A creation book is a real inventory item, so it can be dropped, and {@link #bookSavedHand()}
+     * carries that player's real item inside it. Without an owner stamp, anyone who picked the book
+     * up and opened it would have the ORIGINAL owner's stashed item restored into their own hand -
+     * the saved-hand restore is gated on this matching the player doing the editing.
+     */
+    public static NamespacedKey bookOwner() {
+        if (bookOwner == null) {
+            bookOwner = new NamespacedKey(MellishyCustomTag.getInstance(), "book_owner");
+        }
+        return bookOwner;
     }
 }

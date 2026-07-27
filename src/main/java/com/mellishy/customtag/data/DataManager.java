@@ -7,7 +7,9 @@ import com.mellishy.customtag.data.storage.StorageBackend;
 import com.mellishy.customtag.data.storage.YamlStorageBackend;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -126,6 +129,12 @@ public class DataManager {
             plugin.getLogger().log(Level.WARNING, "Could not connect to the configured '" + type
                     + "' storage backend (" + ex.getMessage() + "). Falling back to safe YAML storage - "
                     + "no data was lost, but check your storage.* settings in config.yml.", ex);
+            // A half-initialized backend can already be holding real resources (MySQL builds its
+            // Hikari pool before creating the table; Mongo builds its client before pinging) - once
+            // we swap `backend` below nothing would ever close them, leaking the pool's connections
+            // and background threads for the entire life of the JVM on the very path that's meant to
+            // be the safe one.
+            closeQuietly(backend);
             backend = new YamlStorageBackend(plugin, configManager);
             try {
                 backend.init();
@@ -133,6 +142,7 @@ public class DataManager {
                 // the YAML fallback itself should never realistically fail, but never let a storage
                 // problem take the whole plugin down - log it and keep running on an in-memory-only cache
                 plugin.getLogger().log(Level.SEVERE, "YAML fallback storage also failed to initialize! Data will not persist this session.", fatal);
+                closeQuietly(backend);
                 backend = new NoopBackend();
             }
         }
@@ -144,6 +154,18 @@ public class DataManager {
             warnIfLargePlayerbaseWithoutEviction(loaded.size());
         } catch (Exception ex) {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data from " + backend.name() + " storage.", ex);
+        }
+    }
+
+    /** Releases a backend we're about to throw away. It already failed once, so a second failure
+     *  while closing it is noise - never let it mask the original problem or abort the fallback. */
+    private void closeQuietly(StorageBackend discarded) {
+        if (discarded == null) return;
+        try {
+            discarded.close();
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.FINE, "Ignoring failure while closing the discarded "
+                    + discarded.name() + " backend.", ex);
         }
     }
 
@@ -161,7 +183,7 @@ public class DataManager {
     }
 
     private StorageBackend createBackend(String type) {
-        return switch (type == null ? "yaml" : type.toLowerCase().trim()) {
+        return switch (type == null ? "yaml" : type.toLowerCase(Locale.ROOT).trim()) {
             case "mysql" -> new MySQLStorageBackend(plugin, configManager);
             case "mongodb", "mongo" -> new MongoStorageBackend(plugin, configManager);
             default -> new YamlStorageBackend(plugin, configManager);
@@ -182,8 +204,13 @@ public class DataManager {
         return data;
     }
 
+    /**
+     * Read-only view of every cached player. Unmodifiable so a caller can never structurally alter
+     * the cache behind {@link #save}/{@link #scheduleEviction}'s back; the {@link PlayerData} values
+     * themselves are still the live objects (main thread only, same contract as {@link #get}).
+     */
     public Map<UUID, PlayerData> all() {
-        return cache;
+        return Collections.unmodifiableMap(cache);
     }
 
     /**
@@ -194,16 +221,87 @@ public class DataManager {
      */
     public void ensureLoaded(UUID uuid, String nameIfNew) {
         if (cache.containsKey(uuid)) return;
+        PlayerData data;
         try {
-            Optional<PlayerData> loaded = backend.load(uuid);
-            PlayerData data = loaded.orElseGet(() -> new PlayerData(uuid, nameIfNew, configManager.startingTokens()));
-            cache.put(uuid, data);
-            refreshRenderCache(data);
+            data = backend.load(uuid)
+                    .orElseGet(() -> new PlayerData(uuid, nameIfNew, configManager.startingTokens()));
         } catch (Exception ex) {
             plugin.getLogger().log(Level.WARNING, "Failed to lazily load player data for " + uuid + " via " + backend.name() + " storage.", ex);
-            PlayerData fallback = new PlayerData(uuid, nameIfNew, configManager.startingTokens());
-            if (cache.putIfAbsent(uuid, fallback) == null) refreshRenderCache(fallback);
+            data = new PlayerData(uuid, nameIfNew, configManager.startingTokens());
         }
+        // putIfAbsent, never put: the containsKey() check above and this insert are not atomic, and
+        // the backend read between them takes real time (a JDBC/Mongo round trip). The main thread
+        // is free to create and start mutating this player's live PlayerData in that window - via
+        // get(), or a join, or an admin action - and an unconditional put() would throw that live,
+        // already-modified object away and replace it with the row we read before those changes
+        // happened, losing them.
+        PlayerData existing = cache.putIfAbsent(uuid, data);
+        if (existing == null) refreshRenderCache(data);
+    }
+
+    /**
+     * Async counterpart of {@link #ensureLoaded}, for main-thread callers that need an offline
+     * player's data before they can do their work.
+     *
+     * {@code ensureLoaded} performs a real backend read - a JDBC or Mongo round trip - whenever the
+     * player isn't cached, which is exactly the situation an admin acting on an offline player is
+     * in once {@code storage.cache-eviction} is enabled. Calling it straight from a command handler
+     * or a GUI click ran that round trip on the main thread and stalled the whole server for its
+     * duration; a staff member clicking through several players did it once per click.
+     *
+     * The already-cached case (the overwhelming majority, and always the case when cache-eviction
+     * is off) runs the callback inline with no tick of delay, so this is safe to use everywhere.
+     */
+    public void ensureLoadedAsync(UUID uuid, String nameIfNew, Runnable afterOnMain) {
+        if (cache.containsKey(uuid)) {
+            afterOnMain.run();
+            return;
+        }
+        try {
+            ioExecutor.execute(() -> {
+                ensureLoaded(uuid, nameIfNew);
+                if (!plugin.isEnabled()) return;
+                plugin.getServer().getScheduler().runTask(plugin, afterOnMain);
+            });
+        } catch (RejectedExecutionException ex) {
+            // shutting down - fall back to the blocking path rather than dropping the action
+            ensureLoaded(uuid, nameIfNew);
+            afterOnMain.run();
+        }
+    }
+
+    /**
+     * Re-reads one player's data from the storage backend and swaps it into the cache - the
+     * cross-server sync path: another server just changed this player (tag approved, tokens
+     * spent, ...) and, since all servers share the same MySQL/MongoDB database, re-reading is
+     * all it takes to converge. The backend read runs on the I/O pool; the cache swap (and the
+     * optional {@code afterOnMain} callback) run back on the main thread.
+     *
+     * If a LOCAL write for this player is still in flight (or lands while we're reading), the
+     * refresh is skipped: the local state is by definition newer than whatever the remote server
+     * saw, and our own queued save will publish a fresh sync event of its own anyway.
+     */
+    public void refreshFromBackend(UUID uuid, Runnable afterOnMain) {
+        if (writeChains.containsKey(uuid)) return;
+        ioExecutor.execute(() -> {
+            Optional<PlayerData> loaded;
+            try {
+                loaded = backend.load(uuid);
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.WARNING, "Cross-server refresh: failed to re-read player data for "
+                        + uuid + " via " + backend.name() + " storage.", ex);
+                return;
+            }
+            if (!plugin.isEnabled()) return; // shutting down - the final saveAll() wins
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (writeChains.containsKey(uuid)) return; // raced with a local write - local wins
+                loaded.ifPresent(fresh -> {
+                    cache.put(uuid, fresh);
+                    refreshRenderCache(fresh);
+                });
+                if (afterOnMain != null) afterOnMain.run();
+            });
+        });
     }
 
     /**
@@ -218,13 +316,28 @@ public class DataManager {
      */
     public void scheduleEviction(UUID uuid) {
         if (!configManager.cacheEvictionEnabled()) return;
-        long delayTicks = configManager.cacheEvictionDelaySeconds() * 20L;
+        scheduleEviction(uuid, configManager.cacheEvictionDelaySeconds() * 20L);
+    }
+
+    /** How long to wait before re-testing a player whose eviction was deferred by an in-flight save. */
+    private static final long EVICTION_RETRY_TICKS = 20L;
+
+    private void scheduleEviction(UUID uuid, long delayTicks) {
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (plugin.getServer().getPlayer(uuid) != null) return; // reconnected - keep them cached
             PlayerData data = cache.get(uuid);
             // a pending request must stay visible in the admin queue (AdminGUI reads straight from
             // this cache) regardless of whether the requester is online - never evict those
             if (data != null && data.getPendingTag().isPresent()) return;
+            // A queued save for this player may not have reached the backend yet (a stalled or slow
+            // database is exactly when this matters). Evicting now would let a rejoin inside that
+            // window - PlayerPreLoginListener -> ensureLoaded - read the PRE-save row back out of
+            // the database and resurrect data we already know is stale. Wait for the write to land;
+            // the chain always resolves and removes itself (see save()), so this can't loop forever.
+            if (writeChains.containsKey(uuid)) {
+                if (plugin.isEnabled()) scheduleEviction(uuid, EVICTION_RETRY_TICKS);
+                return;
+            }
             cache.remove(uuid);
             renderCache.remove(uuid);
         }, delayTicks);
@@ -256,20 +369,28 @@ public class DataManager {
 
         UUID uuid = data.getUuid();
         PlayerData snapshot = data.snapshot();
-        writeChains.compute(uuid, (id, previous) -> {
+        CompletableFuture<Void> link = writeChains.compute(uuid, (id, previous) -> {
             CompletableFuture<Void> prior = previous != null ? previous : CompletableFuture.completedFuture(null);
-            CompletableFuture<Void> next = prior.thenRunAsync(() -> {
+            return prior.thenRunAsync(() -> {
                 try {
                     backend.save(snapshot);
                 } catch (Exception ex) {
                     plugin.getLogger().log(Level.WARNING, "Failed to save player data for " + uuid + " via " + backend.name() + " storage.", ex);
                 }
             }, ioExecutor);
-            // once this link finishes, drop it from the map (unless a newer save already replaced
-            // it) so writeChains never grows without bound across a long-running session
-            next.whenComplete((r, ex) -> writeChains.remove(uuid, next));
-            return next;
         });
+        // Once this link finishes, drop it from the map (unless a newer save already replaced it)
+        // so writeChains never grows without bound across a long-running session.
+        //
+        // Registered OUTSIDE the compute() above on purpose. ConcurrentHashMap explicitly forbids a
+        // mapping function from updating any mapping of the same map, and this callback runs inline
+        // on the calling thread whenever the future is already complete by the time it is attached -
+        // which the I/O pool makes entirely possible for a fast backend. Inside compute() that
+        // inline remove() saw the OLD mapping (or none at all), removed nothing, and then compute()
+        // stored an already-completed future that nothing would ever clean up: a slow leak that also
+        // made writeChains.containsKey(uuid) permanently true, silently disabling cross-server
+        // refresh (see refreshFromBackend) for that player for the rest of the session.
+        link.whenComplete((r, ex) -> writeChains.remove(uuid, link));
     }
 
     /** Blocks until every currently-queued async save has finished. Only called on plugin disable. */

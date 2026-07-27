@@ -17,7 +17,7 @@ public class MellishyInventoryHolder implements InventoryHolder {
     private final GuiType type;
     private Inventory inventory;
     private final Map<Integer, String> slotContext = new HashMap<>();
-    /** Zero-based page index, currently only used by the paginated admin queue. */
+    /** Zero-based page index for paginated menus (admin queue, tag list, admin player-tags). */
     private int page;
     /** Total page count for this inventory instance (always >= 1) - lets the listener enforce real
      *  first/last-page bounds on Prev/Next clicks instead of trusting a greyed-out icon alone. */

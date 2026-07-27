@@ -10,7 +10,6 @@ import com.mellishy.customtag.util.ItemBuilder;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,10 +22,12 @@ import java.util.UUID;
  * entry) without alerting the player, e.g. something that slipped through review and got reported
  * later. Opened via {@code /customtag managetags <player>}.
  *
+ * Paginated like {@link TagListGUI}: with unlimited rejected history a single player can easily
+ * outgrow one chest inventory, and tags past the grid used to be unreachable for silent delete.
+ *
  * Same explicit two-action silent moderation as the pending queue (see AdminGUI's javadoc):
  *   - SHIFT+Right-click: silently removed, token IS refunded.
  *   - Drop (Q): silently removed, token is NOT refunded.
- * Never sends the target player any chat message either way - that's the point of "silent".
  */
 public class AdminPlayerTagsGUI {
 
@@ -37,24 +38,49 @@ public class AdminPlayerTagsGUI {
     }
 
     public void open(Player admin, UUID targetUuid) {
+        open(admin, targetUuid, 0);
+    }
+
+    public void open(Player admin, UUID targetUuid, int page) {
+        plugin.tagService().loadTargetAsync(targetUuid, () -> {
+            if (admin.isOnline()) build(admin, targetUuid, page);
+        });
+    }
+
+    private void build(Player admin, UUID targetUuid, int page) {
         ConfigManager cfg = plugin.config();
         PlayerData data = plugin.tagService().loadTarget(targetUuid);
 
         int size = cfg.guiSize("admin-player-tags");
+        List<TagEntry> tags = List.copyOf(data.getTags());
+        int perPage = GuiFrame.contentPerPage(size);
+        int totalPages = Math.max(1, (int) Math.ceil(tags.size() / (double) perPage));
+        int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+        String rawTitle = cfg.guiTitle("admin-player-tags").replace("{player}", data.getLastKnownName());
+        if (rawTitle.length() > 48) rawTitle = rawTitle.substring(0, 48);
+        String title = totalPages > 1
+                ? rawTitle + " &7[" + (currentPage + 1) + "/" + totalPages + "]"
+                : rawTitle;
+
         MellishyInventoryHolder holder = new MellishyInventoryHolder(GuiType.ADMIN_PLAYER_TAGS);
-        String title = cfg.guiTitle("admin-player-tags").replace("{player}", data.getLastKnownName());
         Inventory inv = plugin.getServer().createInventory(holder, size, ColorUtil.parse(title));
         holder.setInventory(inv);
-        // stash the target uuid on a slot no item ever occupies, so the listener can find it back
         holder.putContext(-1, targetUuid.toString());
+        holder.setPage(currentPage);
+        holder.setTotalPages(totalPages);
 
         GuiFrame.border(inv, size, cfg);
 
+        int from = currentPage * perPage;
+        int to = Math.min(from + perPage, tags.size());
+        List<TagEntry> pageSlice = tags.isEmpty() ? List.of() : tags.subList(from, to);
+
         GuiFrame.ContentGrid grid = GuiFrame.contentGrid(size);
         int slot = grid.startSlot();
-        for (TagEntry tag : data.getTags()) {
+        for (TagEntry tag : pageSlice) {
             if (grid.isPastEnd(slot)) break;
-            if ((slot + 1) % 9 == 0) slot += 2;
+            slot = GuiFrame.skipBorderColumn(slot);
 
             Material mat = switch (tag.getStatus()) {
                 case APPROVED -> Material.NAME_TAG;
@@ -67,10 +93,6 @@ public class AdminPlayerTagsGUI {
                 case REJECTED -> "&c";
             };
 
-            // Plain, uncolored text only - never the tag live-rendered - exactly like AdminGUI's
-            // pending queue already does, and for the same reason: a deliberately glitchy or
-            // interactive (click/hover) submission must never make this admin menu itself look
-            // broken or carry a clickable payload the admin didn't expect.
             String plainText = ColorUtil.stripToPlain(tag.getRawText());
             if (plainText.isBlank()) plainText = "(blank)";
 
@@ -78,23 +100,21 @@ public class AdminPlayerTagsGUI {
             lore.add("&7Preview: &f" + plainText);
             lore.add("&7Status: " + statusColor + prettyStatus(tag.getStatus()));
             if (tag.getStatus() == TagStatus.REJECTED && tag.getRejectReason() != null) {
-                lore.add("&7Reason: &f" + tag.getRejectReason());
+                lore.add("&7Reason: &f" + ColorUtil.capLoreText(tag.getRejectReason()));
             }
             lore.add("");
             lore.add(cfg.rawMsg("admin-request-actions-silent-refund"));
             lore.add(cfg.rawMsg("admin-request-actions-silent-no-refund"));
 
-            ItemStack item = new ItemBuilder(mat)
+            inv.setItem(slot, new ItemBuilder(mat)
                     .name(statusColor + "&l" + prettyStatus(tag.getStatus()))
                     .lore(lore)
-                    .build();
-
-            inv.setItem(slot, item);
+                    .build());
             holder.putContext(slot, tag.getId());
             slot++;
         }
 
-        if (data.getTags().isEmpty()) {
+        if (tags.isEmpty()) {
             int rows = size / 9;
             int centerSlot = (rows / 2) * 9 + 4;
             inv.setItem(centerSlot, new ItemBuilder(Material.GRAY_DYE)
@@ -105,6 +125,7 @@ public class AdminPlayerTagsGUI {
         int backSlot = cfg.guiSlot("admin-player-tags", "back-slot");
         inv.setItem(backSlot, new ItemBuilder(Material.BARRIER).name("&c&lClose").build());
 
+        GuiFrame.renderPageFooter(inv, cfg, "admin-player-tags", currentPage, totalPages);
         GuiFrame.fillEmptyCheckered(inv, size, cfg);
 
         admin.openInventory(inv);

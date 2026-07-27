@@ -12,7 +12,10 @@ import com.mellishy.customtag.listener.GuiListener;
 import com.mellishy.customtag.listener.PlayerJoinListener;
 import com.mellishy.customtag.listener.PlayerPreLoginListener;
 import com.mellishy.customtag.listener.PlayerQuitListener;
+import com.mellishy.customtag.api.CustomTagAPI;
 import com.mellishy.customtag.placeholder.MellishyPlaceholder;
+import com.mellishy.customtag.platform.ApiBridge;
+import com.mellishy.customtag.platform.PlatformServices;
 import com.mellishy.customtag.service.TagService;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -28,6 +31,8 @@ public class MellishyCustomTag extends JavaPlugin {
     private ChatInputListener chatInputListener;
     private TagService tagService;
     private BookEditListener bookEditListener;
+    /** The enterprise layer: queue, tokens ledger, validation, AI, webhooks, audit, security, roles, ids, sync. */
+    private PlatformServices platform;
 
     /** Non-null only while chat.auto-apply-tag is actually active - see {@link #applyChatAutoApplySetting()}. */
     private ChatTagListener chatTagListener;
@@ -43,8 +48,13 @@ public class MellishyCustomTag extends JavaPlugin {
         this.dataManager = new DataManager(this, configManager);
         this.dataManager.init();
         this.cooldownManager = new CooldownManager();
+        // must exist before TagService: every submission/decision path routes through it
+        this.platform = new PlatformServices(this);
         this.chatInputListener = new ChatInputListener(this);
         this.tagService = new TagService(this);
+        // the high-level API facade needs TagService, so it registers here rather than inside
+        // PlatformServices' constructor
+        CustomTagAPI.registerOperations(new ApiBridge(this));
 
         getServer().getPluginManager().registerEvents(tagService, this);
         getServer().getPluginManager().registerEvents(new GuiListener(this), this);
@@ -63,7 +73,14 @@ public class MellishyCustomTag extends JavaPlugin {
 
         applyPlaceholderSetting();
 
-        getLogger().info("CustomTag enabled.");
+        // recurring platform tasks (queue expiry sweep, audit retention) - scheduled last so
+        // tagService already exists when the first sweep fires
+        platform.startTasks();
+
+        getLogger().info("CustomTag enabled - queue limit " + platform.requests().globalPendingLimit()
+                + ", AI mode " + platform.ai().mode()
+                + ", " + (platform.webhooks().hasEndpoints() ? "webhooks active" : "no webhooks configured")
+                + ", server name '" + platform.serverName() + "'.");
     }
 
     /**
@@ -123,6 +140,11 @@ public class MellishyCustomTag extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (platform != null) {
+            // stops AI/webhook executors, drains the platform IO queue and does the final
+            // synchronous flush of counters/ids/queue store - see PlatformServices#shutdown
+            platform.shutdown();
+        }
         if (dataManager != null) {
             // shutdown() itself now drains pending async saves and performs the final synchronous
             // saveAll() in the correct order - see its javadoc. Do not call saveAll() separately
@@ -174,5 +196,10 @@ public class MellishyCustomTag extends JavaPlugin {
 
     public BookEditListener bookEdit() {
         return bookEditListener;
+    }
+
+    /** The enterprise platform layer (queue, tokens, validation, AI, webhooks, audit, security, roles). */
+    public PlatformServices platform() {
+        return platform;
     }
 }

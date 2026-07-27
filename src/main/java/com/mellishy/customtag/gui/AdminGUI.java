@@ -99,8 +99,7 @@ public class AdminGUI {
         pendingOwners.sort(Comparator.comparingLong(d -> d.getPendingTag().get().getCreatedAt()));
 
         GuiFrame.ContentGrid grid = GuiFrame.contentGrid(size);
-        int interiorRows = Math.max(1, ((grid.lastSlot() / 9) - (grid.startSlot() / 9)) + 1);
-        int perPage = Math.max(1, interiorRows * 7); // interior rows x interior columns only
+        int perPage = GuiFrame.contentPerPage(size);
         int totalPending = pendingOwners.size();
         int totalPages = Math.max(1, (int) Math.ceil(totalPending / (double) perPage));
         int currentPage = Math.max(0, Math.min(page, totalPages - 1));
@@ -136,7 +135,7 @@ public class AdminGUI {
         int slot = grid.startSlot();
         for (PlayerData data : pageSlice) {
             if (grid.isPastEnd(slot)) break; // defense-in-depth - pageSlice is already sized to fit, but never trust that alone
-            slot = skipBorderColumn(slot);
+            slot = GuiFrame.skipBorderColumn(slot);
 
             TagEntry tag = data.getPendingTag().get();
             String plainText = ColorUtil.stripToPlain(tag.getRawText());
@@ -177,38 +176,16 @@ public class AdminGUI {
         admin.openInventory(inv);
     }
 
-    /**
-     * The interior content grid only ever uses columns 1-7 - columns 0 and 8 are always the
-     * left/right border, exactly one slot wide on every side (see the class javadoc on
-     * {@link GuiFrame.ContentGrid}, which every content-placement loop in this plugin is required
-     * to derive its bounds from instead of a hardcoded row-length constant). If {@code slot} has
-     * landed on column 8 (i.e. {@code (slot + 1) % 9 == 0}), skip both that border slot AND the
-     * column-0 border slot that starts the next row, landing on column 1 of the next row instead.
-     * A no-op for every other column.
-     */
-    private static int skipBorderColumn(int slot) {
-        return (slot + 1) % 9 == 0 ? slot + 2 : slot;
-    }
-
     private void renderFooter(Inventory inv, ConfigManager cfg, int currentPage, int totalPages, int totalPending) {
-        int prevSlot = cfg.guiSlot("admin-list", "prev-page-slot");
+        GuiFrame.renderPageFooter(inv, cfg, "admin-list", currentPage, totalPages);
+        // Total pending rides on the next-page button lore when navigation is available
         int nextSlot = cfg.guiSlot("admin-list", "next-page-slot");
-
-        boolean hasPrev = currentPage > 0;
         boolean hasNext = currentPage < totalPages - 1;
-
-        // The old third "Page X/Y" item is gone - that readout now lives in the GUI title (see
-        // open()). Total pending is still worth surfacing, so it rides along as lore on whichever
-        // nav button; a disabled button (grey dye, no glow, plain-grey name) is also genuinely inert
-        // now - see GuiListener#handleAdminList, which checks holder.getPage()/getTotalPages()
-        // before doing anything instead of trusting the icon alone.
-        inv.setItem(prevSlot, new ItemBuilder(hasPrev ? Material.ARROW : Material.GRAY_DYE)
-                .name(hasPrev ? "&e&l\u25C0 Previous Page" : "&7\u25C0 Previous Page")
-                .lore(hasPrev ? List.of() : List.of("&8Already on the first page"))
-                .build());
-        inv.setItem(nextSlot, new ItemBuilder(hasNext ? Material.ARROW : Material.GRAY_DYE)
-                .name(hasNext ? "&e&lNext Page \u25B6" : "&7Next Page \u25B6")
-                .lore(hasNext ? List.of("&7Total pending: &f" + totalPending) : List.of("&8Already on the last page"))
-                .build());
+        if (hasNext) {
+            inv.setItem(nextSlot, new ItemBuilder(Material.ARROW)
+                    .name("&e&lNext Page \u25B6")
+                    .lore(List.of("&7Total pending: &f" + totalPending))
+                    .build());
+        }
     }
 }

@@ -70,11 +70,36 @@ public class GuiListener implements Listener {
             case MAIN_MENU -> handleMainMenu(player, slot);
             case TAG_LIST -> handleTagList(player, holder, slot, click);
             case CREATE_METHOD -> handleCreateMethod(player, holder, slot);
-            case ADMIN_LIST -> handleAdminList(player, holder, slot, click);
-            case ADMIN_REASON -> handleAdminReason(player, holder, slot);
+            case ADMIN_LIST -> { if (requireStaff(player)) handleAdminList(player, holder, slot, click); }
+            case ADMIN_REASON -> { if (requireStaff(player)) handleAdminReason(player, holder, slot); }
             case RANDOM_SETTINGS -> handleRandomSettings(player, holder, slot);
-            case ADMIN_PLAYER_TAGS -> handleAdminPlayerTags(player, holder, slot, click);
+            case ADMIN_PLAYER_TAGS -> { if (requireStaff(player)) handleAdminPlayerTags(player, holder, slot, click); }
         }
+    }
+
+    /**
+     * Re-checks the staff permission on every admin click, not just when the menu was opened.
+     * An open inventory outlives the permission that opened it: a staff member who is demoted,
+     * has their LuckPerms group changed, or is de-opped while the queue is on screen otherwise
+     * keeps full approve/reject/silent-delete power over every request for as long as they simply
+     * do not close the window.
+     */
+    private boolean requireStaff(Player player) {
+        if (plugin.platform().permissions().canStaff(player, "queue")) return true;
+        player.sendMessage(ColorUtil.parse(plugin.config().msg("no-permission")));
+        player.closeInventory();
+        return false;
+    }
+
+    /**
+     * Opens a menu on the NEXT tick instead of directly inside {@link InventoryClickEvent}.
+     * Bukkit is still mid-way through processing the click when a handler runs - swapping the
+     * player's open inventory underneath it desynchronises the client from the server's view of
+     * the window, which shows up as ghost items, a menu that will not close, or the click landing
+     * on the newly-drawn menu. Deferring by one tick lets the click finish first.
+     */
+    private void reopen(Runnable open) {
+        plugin.getServer().getScheduler().runTask(plugin, open);
     }
 
     private void handleMainMenu(Player player, int slot) {
@@ -87,11 +112,11 @@ public class GuiListener implements Listener {
         if (slot == exitSlot) {
             player.closeInventory();
         } else if (slot == headSlot || slot == listSlot) {
-            tagListGUI.open(player);
+            reopen(() -> tagListGUI.open(player));
         } else if (slot == createSlot) {
             PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
             if (plugin.tagService().canOpenCreateMethod(data)) {
-                createMethodGUI.open(player, null, CreateMethodGUI.Origin.MAIN_MENU);
+                reopen(() -> createMethodGUI.open(player, null, CreateMethodGUI.Origin.MAIN_MENU));
             } else {
                 player.sendMessage(ColorUtil.parse(cfg.msg("no-tokens")));
             }
@@ -103,15 +128,26 @@ public class GuiListener implements Listener {
         int createSlot = cfg.guiSlot("tag-list", "create-slot");
         int backSlot = cfg.guiSlot("tag-list", "back-slot");
         int randomSlot = cfg.guiSlot("tag-list", "random-slot");
+        int prevSlot = cfg.guiSlot("tag-list", "prev-page-slot");
+        int nextSlot = cfg.guiSlot("tag-list", "next-page-slot");
+        int page = holder.getPage();
 
         if (slot == backSlot) {
-            mainMenuGUI.open(player);
+            reopen(() -> mainMenuGUI.open(player));
+            return;
+        }
+        if (slot == prevSlot) {
+            if (page > 0) reopen(() -> tagListGUI.open(player, page - 1));
+            return;
+        }
+        if (slot == nextSlot) {
+            if (page + 1 < holder.getTotalPages()) reopen(() -> tagListGUI.open(player, page + 1));
             return;
         }
         if (slot == randomSlot) {
             PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
             if (data.approvedTagCount() >= cfg.randomMinTags()) {
-                randomSettingsGUI.open(player);
+                reopen(() -> randomSettingsGUI.open(player));
             } else {
                 player.sendMessage(ColorUtil.parse(cfg.msg("random-not-enough-tags").replace("{min}", String.valueOf(cfg.randomMinTags()))));
             }
@@ -120,10 +156,9 @@ public class GuiListener implements Listener {
         if (slot == createSlot) {
             PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
             if (plugin.tagService().canOpenCreateMethod(data)) {
-                createMethodGUI.open(player, null, CreateMethodGUI.Origin.TAG_LIST);
+                reopen(() -> createMethodGUI.open(player, null, CreateMethodGUI.Origin.TAG_LIST));
             } else {
-                player.closeInventory();
-                tagListGUI.open(player); // reopen to show the reason in item lore
+                reopen(() -> tagListGUI.open(player, page));
             }
             return;
         }
@@ -141,23 +176,19 @@ public class GuiListener implements Listener {
                     player.sendMessage(ColorUtil.parse(cfg.msg("request-pending-block")));
                     return;
                 }
-                player.closeInventory();
-                createMethodGUI.open(player, tagId, CreateMethodGUI.Origin.TAG_LIST);
+                reopen(() -> createMethodGUI.open(player, tagId, CreateMethodGUI.Origin.TAG_LIST));
             }
             case RIGHT -> {
-                // Right-click toggles: unequip if this is the currently-equipped tag, otherwise
-                // equip it. Mirrors the equip/unequip pair exposed by TagService, and matches the
-                // "Right-click to unselect" lore TagListGUI shows for the active tag.
                 if (tagId.equals(data.getActiveTagId())) {
                     plugin.tagService().unselectTag(player, tagId);
                 } else {
                     plugin.tagService().selectTag(player, tagId);
                 }
-                tagListGUI.open(player);
+                reopen(() -> tagListGUI.open(player, page));
             }
             case DROP, CONTROL_DROP -> {
                 plugin.tagService().deleteTag(player, tagId);
-                tagListGUI.open(player);
+                reopen(() -> tagListGUI.open(player, page));
             }
             default -> {}
         }
@@ -175,9 +206,9 @@ public class GuiListener implements Listener {
             // Bug fix: this used to always reopen the tag list, even for players who opened
             // "Create" straight from the main menu - now it returns to wherever they came from.
             if (origin == CreateMethodGUI.Origin.MAIN_MENU) {
-                mainMenuGUI.open(player);
+                reopen(() -> mainMenuGUI.open(player));
             } else {
-                tagListGUI.open(player);
+                reopen(() -> tagListGUI.open(player));
             }
         } else if (slot == bookSlot) {
             if (editingId == null) {
@@ -215,7 +246,7 @@ public class GuiListener implements Listener {
         int backSlot = cfg.guiSlot("random-settings", "back-slot");
 
         if (slot == backSlot) {
-            tagListGUI.open(player);
+            reopen(() -> tagListGUI.open(player));
             return;
         }
 
@@ -228,7 +259,7 @@ public class GuiListener implements Listener {
             }
             data.setRandomTagEnabled(!data.isRandomTagEnabled());
             plugin.data().save(data);
-            randomSettingsGUI.open(player);
+            reopen(() -> randomSettingsGUI.open(player));
             return;
         }
 
@@ -248,7 +279,7 @@ public class GuiListener implements Listener {
             data.getRandomTagPool().add(tagId);
         }
         plugin.data().save(data);
-        randomSettingsGUI.open(player);
+        reopen(() -> randomSettingsGUI.open(player));
     }
 
     private void handleAdminList(Player player, MellishyInventoryHolder holder, int slot, ClickType click) {
@@ -266,37 +297,56 @@ public class GuiListener implements Listener {
             // the first page (or Next on the last) is now a genuine no-op instead of silently
             // reopening the exact same page or relying on AdminGUI's clamp as the only safety net.
             if (holder.getPage() > 0) {
-                adminGUI.open(player, holder.getPage() - 1);
+                int target = holder.getPage() - 1;
+                reopen(() -> adminGUI.open(player, target));
             }
             return;
         }
         if (slot == nextSlot) {
             if (holder.getPage() < holder.getTotalPages() - 1) {
-                adminGUI.open(player, holder.getPage() + 1);
+                int target = holder.getPage() + 1;
+                reopen(() -> adminGUI.open(player, target));
             }
             return;
         }
 
         String context = holder.getContext(slot);
-        if (context == null) return;
-        String[] parts = context.split(":", 2);
-        UUID targetUuid = UUID.fromString(parts[0]);
-        String tagId = parts[1];
+        UUID targetUuid = targetUuidOf(context);
+        if (targetUuid == null) return;
+        String tagId = context.substring(context.indexOf(':') + 1);
+        int page = holder.getPage();
 
         if (click == ClickType.LEFT) {
             plugin.tagService().approve(player, targetUuid, tagId);
-            adminGUI.open(player, holder.getPage());
+            reopen(() -> adminGUI.open(player, page));
         } else if (click == ClickType.SHIFT_RIGHT) {
             // silent + refunded: request removed, no chat message sent, token given back as a courtesy
             plugin.tagService().rejectSilent(player, targetUuid, tagId, true);
-            adminGUI.open(player, holder.getPage());
+            reopen(() -> adminGUI.open(player, page));
         } else if (click == ClickType.DROP || click == ClickType.CONTROL_DROP) {
             // silent + NOT refunded: request removed for good, no chat message, no token back
             plugin.tagService().rejectSilent(player, targetUuid, tagId, false);
-            adminGUI.open(player, holder.getPage());
+            reopen(() -> adminGUI.open(player, page));
         } else if (click == ClickType.RIGHT) {
-            player.closeInventory();
-            adminReasonGUI.open(player, context);
+            reopen(() -> adminReasonGUI.open(player, context));
+        }
+    }
+
+    /**
+     * Parses the {@code <uuid>:<tagId>} slot context the admin menus store. Returns null for
+     * anything malformed rather than throwing: the context is plugin-written, but a stale holder
+     * from a menu drawn before a reload (or a future format change) must degrade to an ignored
+     * click, not an ArrayIndexOutOfBounds/IllegalArgumentException surfacing as a console error
+     * on every click.
+     */
+    private static UUID targetUuidOf(String context) {
+        if (context == null) return null;
+        int separator = context.indexOf(':');
+        if (separator <= 0 || separator == context.length() - 1) return null;
+        try {
+            return UUID.fromString(context.substring(0, separator));
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 
@@ -308,22 +358,41 @@ public class GuiListener implements Listener {
     private void handleAdminPlayerTags(Player player, MellishyInventoryHolder holder, int slot, ClickType click) {
         ConfigManager cfg = plugin.config();
         int backSlot = cfg.guiSlot("admin-player-tags", "back-slot");
+        int prevSlot = cfg.guiSlot("admin-player-tags", "prev-page-slot");
+        int nextSlot = cfg.guiSlot("admin-player-tags", "next-page-slot");
+        int page = holder.getPage();
+
+        String targetRaw = holder.getContext(-1);
+        if (targetRaw == null) return;
+        UUID targetUuid;
+        try {
+            targetUuid = UUID.fromString(targetRaw);
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+
         if (slot == backSlot) {
             player.closeInventory();
             return;
         }
+        if (slot == prevSlot) {
+            if (page > 0) reopen(() -> adminPlayerTagsGUI.open(player, targetUuid, page - 1));
+            return;
+        }
+        if (slot == nextSlot) {
+            if (page + 1 < holder.getTotalPages()) reopen(() -> adminPlayerTagsGUI.open(player, targetUuid, page + 1));
+            return;
+        }
 
-        String targetRaw = holder.getContext(-1);
         String tagId = holder.getContext(slot);
-        if (targetRaw == null || tagId == null) return;
-        UUID targetUuid = UUID.fromString(targetRaw);
+        if (tagId == null) return;
 
         if (click == ClickType.SHIFT_RIGHT) {
             plugin.tagService().deleteSilent(player, targetUuid, tagId, true);
-            adminPlayerTagsGUI.open(player, targetUuid);
+            reopen(() -> adminPlayerTagsGUI.open(player, targetUuid, page));
         } else if (click == ClickType.DROP || click == ClickType.CONTROL_DROP) {
             plugin.tagService().deleteSilent(player, targetUuid, tagId, false);
-            adminPlayerTagsGUI.open(player, targetUuid);
+            reopen(() -> adminPlayerTagsGUI.open(player, targetUuid, page));
         }
     }
 
@@ -333,17 +402,26 @@ public class GuiListener implements Listener {
         if (action == null) return;
 
         if (action.equals("custom")) {
+            if (target == null) return;
             player.closeInventory();
             plugin.chatInput().await(player, ChatInputListener.InputType.ADMIN_REASON, target);
             player.sendMessage(ColorUtil.parse(plugin.config().msg("admin-reject-prompt")));
         } else if (action.startsWith("preset:")) {
-            int index = Integer.parseInt(action.substring("preset:".length()));
+            UUID targetUuid = targetUuidOf(target);
+            if (targetUuid == null) return;
+            int index;
+            try {
+                index = Integer.parseInt(action.substring("preset:".length()));
+            } catch (NumberFormatException ex) {
+                return;
+            }
             var presets = plugin.config().rejectPresets();
-            if (index < presets.size()) {
-                String[] parts = target.split(":", 2);
-                plugin.tagService().reject(player, UUID.fromString(parts[0]), parts[1], presets.get(index));
-                player.closeInventory();
-                adminGUI.open(player);
+            // index >= 0 too: rejectPresets() is re-read live, so a preset list shortened by a
+            // /customtag reload while this menu was open must not index out of bounds.
+            if (index >= 0 && index < presets.size()) {
+                plugin.tagService().reject(player, targetUuid,
+                        target.substring(target.indexOf(':') + 1), presets.get(index));
+                reopen(() -> adminGUI.open(player));
             }
         }
     }

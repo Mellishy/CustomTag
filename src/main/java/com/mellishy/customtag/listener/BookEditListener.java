@@ -14,10 +14,16 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerEditBookEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.persistence.PersistentDataType;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Handles the "book" tag-creation method.
@@ -70,6 +76,7 @@ public class BookEditListener implements Listener {
 
         meta.getPersistentDataContainer().set(Keys.bookTarget(), PersistentDataType.STRING, target);
         meta.getPersistentDataContainer().set(Keys.bookOriginalText(), PersistentDataType.STRING, originalText);
+        meta.getPersistentDataContainer().set(Keys.bookOwner(), PersistentDataType.STRING, player.getUniqueId().toString());
         if (reservationId != null) {
             meta.getPersistentDataContainer().set(Keys.bookReservation(), PersistentDataType.STRING, reservationId);
         }
@@ -102,7 +109,6 @@ public class BookEditListener implements Listener {
         ConfigManager cfg = plugin.config();
         String reservationId = previousMeta.getPersistentDataContainer().get(Keys.bookReservation(), PersistentDataType.STRING);
         String originalText = previousMeta.getPersistentDataContainer().get(Keys.bookOriginalText(), PersistentDataType.STRING);
-        byte[] savedHand = previousMeta.getPersistentDataContainer().get(Keys.bookSavedHand(), PersistentDataType.BYTE_ARRAY);
 
         if (target.equals("new")) {
             PlayerData data = plugin.data().get(player.getUniqueId(), player.getName());
@@ -112,7 +118,7 @@ public class BookEditListener implements Listener {
             if (!stillValid) {
                 // the reservation behind this book was already refunded (they disconnected mid-creation,
                 // or this is a stale duplicate of an old book) - reject it instead of granting a free tag
-                restoreHandNextTick(player, savedHand);
+                restoreHandNextTick(player, previousMeta);
                 player.sendMessage(ColorUtil.parse(cfg.msg("reservation-expired")));
                 return;
             }
@@ -130,7 +136,7 @@ public class BookEditListener implements Listener {
         // re-applies the edited item to the hand slot right after this event returns, so anything we set
         // in this same tick gets silently overwritten and the book appears "stuck" - this is what was
         // causing the book to remain in hand after clicking Done.
-        restoreHandNextTick(player, savedHand);
+        restoreHandNextTick(player, previousMeta);
 
         if (content.isEmpty()) {
             return; // wrote nothing at all - nothing to submit
@@ -182,12 +188,71 @@ public class BookEditListener implements Listener {
      * can pick it up, and it doesn't clutter the world). Since the physical book is now gone
      * either way, any reservation it represented is refunded immediately via TagService so the
      * player isn't left with a spent token and nothing to show for it.
+     *
+     * The stashed hand item (see giveBook) rides along INSIDE the book, so deleting the book on its
+     * own would silently destroy the real item the player was holding when they asked for the book -
+     * it's put back into the drop list here so it behaves exactly like any other item they died with.
      */
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
-        boolean removedOne = event.getDrops().removeIf(this::isOurBook);
-        if (removedOne) {
-            plugin.tagService().handleBookLostToDeath(event.getEntity());
+        List<ItemStack> stashed = new ArrayList<>(1);
+        boolean removedOne = event.getDrops().removeIf(drop -> {
+            if (!isOurBook(drop)) return false;
+            ItemStack saved = savedHandOf(drop);
+            if (saved != null) stashed.add(saved);
+            return true;
+        });
+        if (!removedOne) return;
+        event.getDrops().addAll(stashed);
+        plugin.tagService().handleBookDiscarded(event.getEntity(), "book-lost-to-death");
+    }
+
+    /**
+     * The book is only ever meant to borrow the main-hand slot, so throwing it away is treated as
+     * "I changed my mind": the drop is cancelled, the player's original item comes straight back into
+     * their hand and the reservation is refunded.
+     *
+     * Without this the book - carrying that original item in its NBT - would become a free-floating
+     * world item that could despawn, burn, or be picked up by someone else, taking the owner's item
+     * with it.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onDrop(PlayerDropItemEvent event) {
+        ItemStack item = event.getItemDrop().getItemStack();
+        if (!isOurBook(item)) return;
+        Player player = event.getPlayer();
+        if (!player.getUniqueId().equals(ownerOf(item))) return; // somebody else's stray book - not ours to hand back
+
+        event.setCancelled(true);
+        // the cancelled drop leaves the book back in hand, so clear it out on the next tick the same
+        // way a finished edit does
+        restoreHandNextTick(player, item);
+        plugin.tagService().handleBookDiscarded(player, "book-thrown-away");
+    }
+
+    /**
+     * A creation book must never outlive the session it was handed out in. The reservation behind it
+     * is already refunded on quit ({@link com.mellishy.customtag.service.TagService#handleDisconnect}),
+     * so the book itself is dead weight from this point on - and it's still holding the player's real
+     * item hostage in its NBT. Swap every one of their books back for the item it borrowed the slot
+     * from, so they log back in exactly as they were.
+     *
+     * Runs synchronously on purpose: the inventory is written to disk right after this event, so there
+     * is no "next tick" left to defer to.
+     */
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        ItemStack[] contents = player.getInventory().getContents();
+        boolean changed = false;
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack item = contents[slot];
+            if (!isOurBook(item) || !player.getUniqueId().equals(ownerOf(item))) continue;
+            contents[slot] = savedHandOf(item);
+            changed = true;
+        }
+        if (changed) {
+            player.getInventory().setContents(contents);
         }
     }
 
@@ -197,13 +262,58 @@ public class BookEditListener implements Listener {
         return meta.getPersistentDataContainer().has(Keys.bookTarget(), PersistentDataType.STRING);
     }
 
+    /** The player the book was handed to, or null if it isn't one of ours / the stamp is unreadable. */
+    private UUID ownerOf(ItemStack book) {
+        if (book == null || !(book.getItemMeta() instanceof BookMeta meta)) return null;
+        return ownerOf(meta);
+    }
+
+    private UUID ownerOf(BookMeta meta) {
+        String raw = meta.getPersistentDataContainer().get(Keys.bookOwner(), PersistentDataType.STRING);
+        if (raw == null) return null;
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null; // hand-crafted / corrupted stamp - treat as unowned rather than throwing in an event handler
+        }
+    }
+
+    /** The item the book borrowed the hand slot from, or null if the hand was empty (or the stash is unreadable). */
+    private ItemStack savedHandOf(ItemStack book) {
+        if (book == null || !(book.getItemMeta() instanceof BookMeta meta)) return null;
+        return savedHandOf(meta);
+    }
+
+    private ItemStack savedHandOf(BookMeta meta) {
+        byte[] bytes = meta.getPersistentDataContainer().get(Keys.bookSavedHand(), PersistentDataType.BYTE_ARRAY);
+        if (bytes == null) return null;
+        try {
+            return ItemStack.deserializeBytes(bytes);
+        } catch (RuntimeException ex) {
+            // written by an older/newer server version, or tampered with - losing the stash is bad but
+            // throwing out of an event handler (and leaving the book stuck in hand) is worse
+            plugin.getLogger().warning("Could not restore the item stashed in a tag-creation book: " + ex.getMessage());
+            return null;
+        }
+    }
+
+    private void restoreHandNextTick(Player player, ItemStack book) {
+        restoreHandNextTick(player, book.getItemMeta() instanceof BookMeta meta ? meta : null);
+    }
+
     /**
      * Restores whatever the player's main hand held before the book was placed there (or clears it
      * if their hand was empty). Runs one tick later on purpose - see the comment in onEditBook for why
      * doing this synchronously inside the event doesn't stick.
+     *
+     * The stash is only ever handed back to the player the book was stamped for: a creation book is a
+     * real item that can be dropped and picked up, so without that check anyone who found a stray book
+     * could sign it and be handed the original owner's item.
      */
-    private void restoreHandNextTick(Player player, byte[] savedHandBytes) {
-        ItemStack restore = savedHandBytes != null ? ItemStack.deserializeBytes(savedHandBytes) : null;
+    private void restoreHandNextTick(Player player, BookMeta bookMeta) {
+        ItemStack restore = bookMeta != null && player.getUniqueId().equals(ownerOf(bookMeta))
+                ? savedHandOf(bookMeta)
+                : null;
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
             ItemStack current = player.getInventory().getItemInMainHand();

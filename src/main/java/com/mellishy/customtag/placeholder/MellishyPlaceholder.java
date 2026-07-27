@@ -13,6 +13,8 @@ import org.jetbrains.annotations.NotNull;
  *   %customtag_tag_raw%      -> the raw, unparsed text the player submitted
  *   %customtag_tokens%       -> remaining tokens
  *   %customtag_tagcount%     -> how many tags (any status) the player owns
+ *   %customtag_id%           -> the player's permanent custom id, e.g. 3VF-2
+ *   %customtag_id_display%   -> the same id in display form, e.g. <#3VF-2>
  *
  * When chat.auto-apply-tag is true in config.yml, the plugin already renders the tag into chat
  * itself (see ChatTagListener) and you don't need this at all. Turn that setting off and use
@@ -61,7 +63,7 @@ public class MellishyPlaceholder extends PlaceholderExpansion {
         if (player == null) return "";
         DataManager.RenderSnapshot snapshot = plugin.data().renderSnapshot(player.getUniqueId());
 
-        return switch (params.toLowerCase()) {
+        return switch (params.toLowerCase(java.util.Locale.ROOT)) {
             // parseForOthers(), not parse(): this placeholder is meant to be fed into other plugins'
             // chat/tab/nametag/scoreboard output (see the class javadoc) - the same untrusted-to-others
             // audience as ChatTagListener, so it must never carry an interactive click/hover tag either.
@@ -71,6 +73,10 @@ public class MellishyPlaceholder extends PlaceholderExpansion {
             case "tag_raw" -> snapshot.activeTagRaw() != null ? snapshot.activeTagRaw() : plugin.config().placeholderEmptyValue();
             case "tokens" -> String.valueOf(snapshot.tokens());
             case "tagcount" -> String.valueOf(snapshot.tagCount());
+            // PlayerIdService is fully thread-safe (concurrent map + synchronized minting), so
+            // these are as async-callable as the snapshot reads above
+            case "id" -> plugin.platform().playerIds().idFor(player.getUniqueId());
+            case "id_display" -> plugin.platform().playerIds().display(player.getUniqueId());
             default -> null;
         };
     }
