@@ -1,0 +1,12 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Logging, Audit Trail & Analytics (module: logs)
+# Every important action (approvals, rejections, refunds, AI decisions, token movements,
+# security blocks, staff overrides) is appended to plugins/CustomTag/logs/audit/ as JSONL -
+# one complete JSON document per line, one file per day. Search recent entries in-game with
+# /customtag audit [filter]. Reload with: /customtag reload logs
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+# Days to keep audit files AND monthly token-ledger files before they are deleted automatically.
+# 0 = keep forever. Token ledgers live under logs/tokens/ as tokens-YYYY-MM.jsonl.
+retention-days: 90

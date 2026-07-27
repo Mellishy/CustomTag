@@ -1,0 +1,34 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Network & Synchronization (module: network)
+# Reload just this module with: /customtag reload network
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+# This server's name inside your network - shown in Discord/webhook payloads, audit logs and
+# request records so staff always know WHERE something happened (lobby, bedwars-1, survival, ...).
+server-name: "server"
+
+# Cross-server synchronization backend.
+#   none  - standalone server (default)
+#   redis - live Redis pub/sub bridge. Every server publishes its changes (tag approved,
+#           tokens spent, request decided, ...) to the channel below; every other server
+#           re-reads that player's row from the shared database and even delivers the
+#           "your tag was approved!" message if the player is currently on THAT server.
+#
+# Requirements for redis mode:
+#   - all servers must share the same database (storage.type mysql or mongodb in config.yml) -
+#     that shared database is the source of truth; Redis only carries the "something changed"
+#     signals between servers
+#   - every server needs a UNIQUE server-name above, or servers will ignore each other's events
+#
+# If Redis goes down mid-session the plugin keeps working normally and reconnects automatically
+# (one console notice every 30s at most) - only cross-server sync pauses until it's back.
+sync-backend: none
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  # all servers of one network must use the same channel; use different channels to run two
+  # independent networks against one Redis instance
+  channel: "customtag"

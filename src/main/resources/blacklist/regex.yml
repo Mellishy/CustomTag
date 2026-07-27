@@ -1,0 +1,36 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Regex rules (module: blacklist)
+# Full regex support with per-rule actions. A rule matches when its pattern
+# is FOUND anywhere in the chosen target text:
+#   target: plain      - visible text, colors stripped
+#           raw        - exactly what the player typed, color codes included
+#           normalized - lowercase, separators/leet/lookalikes folded (anti-bypass form)
+#   action: REJECT | AI_REVIEW | STAFF_REVIEW
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+rules:
+  only-numbers:
+    enabled: true
+    pattern: "^[0-9]+$"
+    target: plain
+    action: REJECT
+    refund: true
+    message: "&cA tag cannot be numbers only."
+
+  repeated-characters:
+    enabled: true
+    pattern: "(.)\\1{5,}"
+    target: plain
+    action: REJECT
+    refund: true
+    message: "&cYour tag repeats the same character too many times."
+
+  impersonating-chat:
+    enabled: true
+    # a tag ending in ":" or ">" can fake the chat format of other players/staff
+    pattern: "[:>]\\s*$"
+    target: plain
+    action: STAFF_REVIEW
+    refund: true
+    message: "&eYour tag needs a staff review before it can be approved."

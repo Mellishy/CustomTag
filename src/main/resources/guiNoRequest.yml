@@ -1,0 +1,14 @@
+# =====================================================
+#  CustomTag - Status theme: NO REQUEST YET
+#  Used for: main menu / tag list background whenever a
+#  player has never submitted a tag request.
+#  Fully custom - any *_STAINED_GLASS_PANE (or any
+#  material at all) works here, this file is never
+#  overwritten once it exists on disk.
+# =====================================================
+theme:
+  border-material: "GRAY_STAINED_GLASS_PANE"
+  side-material: "GRAY_STAINED_GLASS_PANE"
+  filler-material: "LIGHT_GRAY_STAINED_GLASS_PANE"
+  filler-material-alt: "GRAY_STAINED_GLASS_PANE"
+  glow: false

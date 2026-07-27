@@ -1,0 +1,12 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Webhook & Integration layer (module: webhooks)
+# Endpoints live in discord.yml / telegram.yml / custom.yml; message templates in messages.yml.
+# Reload just this module with: /customtag reload webhooks
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+retry:
+  # How many delivery attempts before an event is dropped (with a warning in console).
+  max-attempts: 3
+  # Base delay between attempts (linear backoff: delay, 2x, 3x ...).
+  delay-seconds: 10

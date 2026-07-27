@@ -1,0 +1,42 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Discord endpoints (module: webhooks)
+# Create a webhook in your Discord channel (Channel Settings -> Integrations -> Webhooks) and
+# paste its URL here. Each endpoint picks which events it receives, so you can route pending
+# requests, approvals, rejections, AI reviews and security alerts to different channels.
+#
+# Available events:
+#   REQUEST_CREATED, REQUEST_APPROVED, REQUEST_REJECTED, REQUEST_CANCELLED, REQUEST_EXPIRED,
+#   REQUEST_REOPENED, AI_DECISION, AI_REVIEW_REQUIRED, TOKEN_TRANSACTION, QUEUE_FULL,
+#   SECURITY_ALERT, MAINTENANCE
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+endpoints:
+  pending-channel:
+    enabled: false
+    url: "https://discord.com/api/webhooks/REPLACE/ME"
+    rate-limit-per-minute: 25
+    events:
+      - REQUEST_CREATED
+      - REQUEST_CANCELLED
+      - REQUEST_EXPIRED
+      - QUEUE_FULL
+
+  decisions-channel:
+    enabled: false
+    url: "https://discord.com/api/webhooks/REPLACE/ME"
+    rate-limit-per-minute: 25
+    events:
+      - REQUEST_APPROVED
+      - REQUEST_REJECTED
+      - REQUEST_REOPENED
+      - AI_DECISION
+
+  staff-channel:
+    enabled: false
+    url: "https://discord.com/api/webhooks/REPLACE/ME"
+    rate-limit-per-minute: 25
+    events:
+      - AI_REVIEW_REQUIRED
+      - SECURITY_ALERT
+      - MAINTENANCE

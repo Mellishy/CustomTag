@@ -1,0 +1,13 @@
+# =====================================================
+#  CustomTag - Status theme: PENDING
+#  Used for: main menu / tag list background while a
+#  player has a request awaiting review, AND the admin
+#  review queue background whenever there is at least
+#  one pending request to look at.
+# =====================================================
+theme:
+  border-material: "ORANGE_STAINED_GLASS_PANE"
+  side-material: "ORANGE_STAINED_GLASS_PANE"
+  filler-material: "ORANGE_STAINED_GLASS_PANE"
+  filler-material-alt: "YELLOW_STAINED_GLASS_PANE"
+  glow: false

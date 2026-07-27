@@ -1,0 +1,29 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - AI providers (module: ai)
+# Providers are tried IN ORDER (first = primary, next = fallback, ...). Every service speaking
+# the OpenAI chat-completions format works: OpenAI, OpenRouter, Groq, DeepSeek, Ollama,
+# Gemini's OpenAI-compatible endpoint, self-hosted gateways, ...
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+providers:
+  openai:
+    enabled: false
+    base-url: "https://api.openai.com/v1"
+    api-key: "sk-REPLACE_ME"
+    model: "gpt-4o-mini"
+    timeout-seconds: 15
+
+  openrouter:
+    enabled: false
+    base-url: "https://openrouter.ai/api/v1"
+    api-key: "sk-or-REPLACE_ME"
+    model: "google/gemini-2.0-flash-001"
+    timeout-seconds: 15
+
+  local-ollama:
+    enabled: false
+    base-url: "http://localhost:11434/v1"
+    api-key: ""
+    model: "llama3.1"
+    timeout-seconds: 30

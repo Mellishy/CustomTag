@@ -1,0 +1,31 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Reserved tag protection (module: blacklist)
+# Staff rank names, server/brand names and anything you add here can never be claimed as a tag.
+# "exact"    - blocked only when the WHOLE tag is this name (tag "[King]" vs reserved "king")
+# "contains" - blocked when the name appears ANYWHERE in the tag
+# Matching runs on normalized text, so lookalike/leet/spacing bypasses are caught too.
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+enabled: true
+# REJECT | AI_REVIEW | STAFF_REVIEW
+action: REJECT
+# Reserved names refund by default - it's an honest "that name is taken", not a penalty.
+refund: true
+message: "&cThat name is reserved and cannot be used as a tag."
+
+exact:
+  - "staff"
+  - "helper"
+  - "support"
+  - "builder"
+  - "mod"
+
+contains:
+  - "owner"
+  - "developer"
+  - "admin"
+  - "manager"
+  - "moderator"
+  - "console"
+  - "system"
