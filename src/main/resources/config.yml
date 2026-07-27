@@ -156,6 +156,10 @@ gui:
     back-slot: 45
     # opens Random Tag Settings - see the random-tag.* section above for the unlock thresholds
     random-slot: 53
+    # pagination footer - only meaningful once a player has more tags than fit in the content grid
+    # (e.g. with a raised / unlimited max-rejected-history). Same pattern as admin-list.
+    prev-page-slot: 48
+    next-page-slot: 50
   admin-list:
     title: "&8&lAdmin &7» &fPending Requests"
     size: 54
@@ -178,6 +182,8 @@ gui:
     title: "&8&lAdmin &7» &fTags of {player}"
     size: 54
     back-slot: 49
+    prev-page-slot: 48
+    next-page-slot: 50
   random-settings:
     title: "&8&lRandom Tag &7» &fSettings"
     size: 54
@@ -262,6 +268,30 @@ messages:
   left-mid-creation: "&eYou disconnected while creating a tag - your token was refunded. &b&nClick here&e to start again."
   resume-hover: "&7Click to reopen the tag creation menu"
 
+  # ---- request queue / security / economy platform ----
+  # the network-wide pending queue (queue/settings.yml global-pending-limit) has no free slot
+  queue-full: "&cThe review queue is full right now - please try again in a little while. No token was taken."
+  # submission rate limit hit (security/settings.yml submissions.*) - {time} = seconds until retry
+  rate-limited: "&cYou're submitting too fast. Try again in &e{time}s&c."
+  # the exact same tag text was submitted again within the duplicate window
+  duplicate-submission: "&cYou already submitted that exact tag - it's still being processed."
+  # submissions are frozen by staff (/customtag maintenance submissions on)
+  maintenance-active: "&6Tag submissions are temporarily paused for maintenance. Please try again later."
+  # this player's token account is frozen (/customtag freeze)
+  account-frozen: "&cYour token account is currently frozen. Contact staff for help."
+  # another staff member holds the review lock on that request - {staff} = who
+  request-locked: "&cThat request is being reviewed by &f{staff}&c right now."
+  # the request was decided elsewhere (another staff member, the AI, Discord) while the GUI was open
+  request-already-decided: "&eThat request was already decided by someone else - the queue has been refreshed."
+  # DM sent when a request sat in the queue past queue/settings.yml expire-after-days
+  request-expired-dm: "&eYour tag request expired before it could be reviewed. Your token was refunded - feel free to submit it again."
+  # reject reason stored on the tag when it expires (shown in the player's tag list)
+  request-expired-reason: "Expired before review"
+  # fallback reject reason when the AI rejected without providing one
+  ai-rejected-reason: "Rejected by automated moderation"
+  # /customtag id (own id) - {id} = the permanent custom id, e.g. <#3VF-2>
+  your-custom-id: "&7Your permanent ID: &f{id}"
+
   # preset quick-reject reasons shown as buttons in the admin GUI (English only, shown to players)
   reject-presets:
     - "&cNot approved as submitted, please try a different tag."
@@ -319,8 +349,9 @@ messages:
 
 lore:
   # lore shown on the player-head item in the main menu.
-  # placeholders: {tokens} {max-tags} {tag-count} {status} {status-detail}
+  # placeholders: {tokens} {max-tags} {tag-count} {status} {status-detail} {custom_id}
   profile:
+    - "&7ID: &f{custom_id}"
     - "&7Tokens: &f{tokens}"
     - "&7Tags created: &f{tag-count}&7/&f{max-tags}"
     - "&7Request status: {status}"
@@ -333,3 +364,15 @@ lore:
   detail-pending: "&7Your request is awaiting admin review."
   detail-approved: "&7Your tag is active and ready to use."
   detail-rejected: "&7Reason: {reason}"
+
+# ---- UX feedback sounds ----
+# Namespaced sound keys (works with resource-pack custom sounds too). Leave a value blank ("")
+# to disable that sound entirely.
+ux:
+  sounds:
+    # played to the submitting player right after a request enters the queue
+    submit: "ui.button.click"
+    # played to the player when their tag is approved (they're online)
+    approve: "entity.player.levelup"
+    # played to the player when their tag is rejected (validation, AI or staff)
+    reject: "entity.villager.no"

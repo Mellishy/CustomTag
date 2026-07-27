@@ -1,22 +1,69 @@
 name: CustomTag
-version: '3.2.0'
+version: '4.0.0'
 main: com.mellishy.customtag.MellishyCustomTag
 api-version: '1.21'
 author: Mellishy
 website: https://github.com/Mellishy/MellishyCustomTag
-description: Professional custom player tag system - token economy, in-game GUI/book tag creation, live chat tag rendering and a full admin approval workflow.
+description: Professional custom player tag platform - token economy with a full transaction ledger, global request queue, validation pipeline, AI moderation, Discord/Telegram/webhook integration, audit trail and a complete admin workflow.
 softdepend: [PlaceholderAPI]
 
 commands:
   customtag:
     aliases: [ct]
     description: Open the Mellishy custom tag menu.
-    usage: /customtag [admin|give|take|resetcooldown|reload|managetags]
+    usage: /customtag [admin|queue|history|audit|undo|give|take|tokens|freeze|unfreeze|maintenance|pending|stats|id|resetcooldown|reload|managetags]
 
 permissions:
   mellishy.use:
     description: Allows opening the custom tag menu and requesting tags.
     default: true
+  # Legacy umbrella node - grants EVERY staff action below. Existing setups keep working
+  # unchanged; large networks can instead hand out the granular customtag.staff.* nodes.
   mellishy.admin:
-    description: Allows approving/rejecting requests and managing tokens/cooldowns.
+    description: Full staff access to every CustomTag admin action.
     default: op
+    children:
+      customtag.staff.queue: true
+      customtag.staff.approve: true
+      customtag.staff.reject: true
+      customtag.staff.undo: true
+      customtag.staff.tokens: true
+      customtag.staff.freeze: true
+      customtag.staff.cooldown: true
+      customtag.staff.audit: true
+      customtag.staff.stats: true
+      customtag.staff.maintenance: true
+      customtag.staff.reload: true
+  customtag.staff.queue:
+    description: View the review queue, request history, custom IDs and manage the pending limit.
+    default: false
+  customtag.staff.approve:
+    description: Approve tag requests.
+    default: false
+  customtag.staff.reject:
+    description: Reject or silently remove tag requests.
+    default: false
+  customtag.staff.undo:
+    description: Reopen decided requests (/customtag undo).
+    default: false
+  customtag.staff.tokens:
+    description: Give/take tokens and inspect a player's transaction ledger.
+    default: false
+  customtag.staff.freeze:
+    description: Freeze/unfreeze player token accounts.
+    default: false
+  customtag.staff.cooldown:
+    description: Reset player cooldowns.
+    default: false
+  customtag.staff.audit:
+    description: Search the audit trail (/customtag audit).
+    default: false
+  customtag.staff.stats:
+    description: View platform statistics (/customtag stats).
+    default: false
+  customtag.staff.maintenance:
+    description: Freeze/unfreeze plugin subsystems (/customtag maintenance).
+    default: false
+  customtag.staff.reload:
+    description: Reload the plugin configuration or single modules.
+    default: false
