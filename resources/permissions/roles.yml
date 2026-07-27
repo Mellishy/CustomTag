@@ -1,0 +1,47 @@
+# ------------------------------------------------------------------------------------------------
+# CustomTag - Roles & per-role limits (module: permissions)
+# WHO has a permission node is still decided by your permission plugin (LuckPerms etc.) -
+# this file maps nodes to CustomTag roles and their limits. A value of -1 means "inherit from
+# the 'inherits' role" (finally falling back to plugin defaults from config.yml).
+#
+# Granular staff permissions (all also granted by the legacy umbrella "mellishy.admin"):
+#   customtag.staff.approve   customtag.staff.reject   customtag.staff.remove
+#   customtag.staff.refund    customtag.staff.undo     customtag.staff.freeze
+#   customtag.staff.tokens    customtag.staff.reload   customtag.staff.audit
+#   customtag.staff.maintenance   customtag.staff.queue
+#
+# Reload just this module with: /customtag reload permissions
+# ------------------------------------------------------------------------------------------------
+version: 1
+
+default-role: default
+
+roles:
+  default:
+    weight: 0
+    permission: ""            # everyone
+    max-pending: 1            # open requests at once (0 = unlimited)
+    max-tags: -1              # -1 = tokens.max-tags-per-player from config.yml
+    max-tag-length: -1        # -1 = tokens.max-tag-length from config.yml
+    queue-priority: 3         # lower = reviewed first
+
+  vip:
+    weight: 10
+    permission: "customtag.role.vip"
+    inherits: default
+    max-pending: 2
+    queue-priority: 2
+
+  mvp:
+    weight: 20
+    permission: "customtag.role.mvp"
+    inherits: vip
+    max-pending: 3
+    max-tag-length: 48
+
+  staff:
+    weight: 100
+    permission: "mellishy.admin"
+    inherits: default
+    max-pending: 0            # unlimited
+    queue-priority: 1

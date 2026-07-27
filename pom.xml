@@ -6,11 +6,11 @@
 
     <groupId>com.mellishy</groupId>
     <artifactId>CustomTag</artifactId>
-    <version>3.0.0</version>
+    <version>4.0.0</version>
     <packaging>jar</packaging>
 
     <name>CustomTag</name>
-    <description>Professional custom player tag system with token economy, GUI-driven creation (chat or in-game book editor), live chat rendering, a full admin approval workflow, status-themed menus, live chat preview, silent moderation, pluggable MySQL/MongoDB/YAML storage, and random tag rotation.</description>
+    <description>Custom player tag platform for Paper servers and networks: token economy with a full transaction ledger, global request queue with staff locking and priorities, multi-stage validation pipeline, optional AI moderation, Discord/Telegram/webhook integrations, audit trail, Redis cross-server sync, roles with granular permissions, a public developer API, GUI-driven creation and pluggable MySQL/MongoDB/YAML storage.</description>
     <url>https://github.com/Mellishy/MellishyCustomTag</url>
 
     <properties>
@@ -22,6 +22,7 @@
         <mysql.version>8.4.0</mysql.version>
         <mongodb.version>5.1.1</mongodb.version>
         <hikaricp.version>5.1.0</hikaricp.version>
+        <jedis.version>5.1.3</jedis.version>
         <shade.plugin.version>3.5.3</shade.plugin.version>
     </properties>
 
@@ -79,12 +80,36 @@
             <version>${mongodb.version}</version>
             <scope>compile</scope>
         </dependency>
+        <!-- network sync-backend: redis (cross-server pub/sub). Only connects when
+             network/settings.yml sets sync-backend: redis. gson/json/slf4j are excluded because
+             we only use plain pub/sub (none of Jedis' JSON module is touched) and Paper already
+             ships gson + an slf4j implementation on the runtime classpath -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${jedis.version}</version>
+            <scope>compile</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.google.code.gson</groupId>
+                    <artifactId>gson</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.json</groupId>
+                    <artifactId>json</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
-        <!-- Test-only. Deliberately limited to the parts of the plugin with NO Bukkit/Paper
-             dependency (TagJson, CooldownManager, PlayerData's pure state logic) - everything
-             else (GUIs, Listeners, Commands) is glue code around the Bukkit API and is better
-             covered by manual/in-game QA than by mocking the server. See src/test/java for what's
-             covered and why. -->
+        <!-- Test-only. Scoped to Bukkit-free collaborators and contracts (TokenService,
+             RequestManager, PlayerData, TagJson, SyncEvent parsing, StorageBackend contract via
+             an in-memory stand-in). TagService / GUIs / Listeners need a live Paper server and are
+             covered by TagLifecycleInvariantsTest driving the same collaborators TagService mutates,
+             plus in-game QA. See src/test/java. -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -145,6 +170,14 @@
                                 <relocation>
                                     <pattern>com.zaxxer.hikari</pattern>
                                     <shadedPattern>com.mellishy.customtag.libs.hikari</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>redis.clients</pattern>
+                                    <shadedPattern>com.mellishy.customtag.libs.jedis</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.commons.pool2</pattern>
+                                    <shadedPattern>com.mellishy.customtag.libs.commonspool2</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>

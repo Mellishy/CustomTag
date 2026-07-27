@@ -1,0 +1,15 @@
+# =====================================================
+#  CustomTag - Status theme: APPROVED
+#  Used for: main menu / tag list background once a
+#  player's tag is approved and active, AND the admin
+#  review queue background whenever the queue is empty
+#  ("all caught up" - this is also the fix for the old
+#  bug where an ugly loose pane collided with the border
+#  when there were zero pending requests).
+# =====================================================
+theme:
+  border-material: "GREEN_STAINED_GLASS_PANE"
+  side-material: "GREEN_STAINED_GLASS_PANE"
+  filler-material: "GREEN_STAINED_GLASS_PANE"
+  filler-material-alt: "LIME_STAINED_GLASS_PANE"
+  glow: false

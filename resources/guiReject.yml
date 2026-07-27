@@ -1,0 +1,11 @@
+# =====================================================
+#  CustomTag - Status theme: REJECTED
+#  Used for: main menu / tag list background whenever a
+#  player's most recent request was rejected.
+# =====================================================
+theme:
+  border-material: "RED_STAINED_GLASS_PANE"
+  side-material: "RED_STAINED_GLASS_PANE"
+  filler-material: "RED_STAINED_GLASS_PANE"
+  filler-material-alt: "PINK_STAINED_GLASS_PANE"
+  glow: false
